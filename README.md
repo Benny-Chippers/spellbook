@@ -23,7 +23,46 @@ Install a RISC-V GCC toolchain that provides:
 - `riscv64-unknown-elf-objcopy`
 - `riscv64-unknown-elf-objdump`
 
-#### Example build commands (no Makefile required)
+#### Using the `Makefile` (recommended)
+
+```bash
+# Build all outputs (ELF, BIN, HEX, DUMP)
+make
+
+# Show available targets / current config
+make help
+make config
+
+# Clean build artifacts
+make clean
+
+# Inspect
+make asm
+make size
+```
+
+##### Toolchain selection
+
+The `Makefile` tries to auto-detect a working RISC-V toolchain. If that fails, set `TOOLCHAIN_PREFIX` explicitly:
+
+```bash
+make TOOLCHAIN_PREFIX=riscv64-unknown-elf-
+```
+
+##### Architecture / ABI options
+
+You can override these at build time:
+
+```bash
+# Base RV32I (default)
+make ARCH=rv32i ABI=ilp32
+
+# Add extensions (examples)
+make ARCH=rv32i ISA_EXTENSIONS=m
+make ARCH=rv32i ISA_EXTENSIONS=mc
+```
+
+#### Manual build commands (no Makefile)
 
 ```bash
 # Build ELF
@@ -60,3 +99,19 @@ Edit `link.ld` to match your target memory map (the default is typically set up 
 - `mem_memlog.sv`: simple memory module with logging (handy for bring-up)
 - `boot.S`: minimal start-up / boot stub (if you’re doing bare-metal)
 - `small.c`: tiny test program for quick sanity checks
+
+## AI usage policy (Spellbook / Wizard Core)
+
+This section is intended to be copy/pasted into either project’s README.
+
+- **Project codenames**:
+  - **Spellbook**: test/code-generation utilities and RISC-V test programs
+  - **Wizard Core**: the CPU RTL / Verilog implementation
+- **AI-assisted work (allowed in Spellbook)**:
+  - AI tools may be used to help **write or refactor code in Spellbook**, including scripts and test code that generate/validate RV32I test programs.
+  - When AI is used, the expectation is that outputs are reviewed, tested, and adjusted by a human before merging.
+- **No-AI guarantee (Wizard Core RTL)**:
+  - **AI is not used to generate the Wizard Core CPU Verilog/RTL.**
+  - The CPU implementation is written and maintained by humans to preserve authorship clarity and reduce the risk of subtle functional/corner-case errors from generated RTL.
+- **Scope note**:
+  - This policy is about *authorship of code*. Using AI for high-level brainstorming or documentation is fine, but **generated Verilog for Wizard Core is explicitly out of scope / not accepted**.
