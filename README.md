@@ -102,8 +102,6 @@ Edit `link.ld` to match your target memory map (the default is typically set up 
 
 ## AI usage policy (Spellbook / Wizard Core)
 
-This section is intended to be copy/pasted into either project’s README.
-
 - **Project codenames**:
   - **Spellbook**: test/code-generation utilities and RISC-V test programs
   - **Wizard Core**: the CPU RTL / Verilog implementation
