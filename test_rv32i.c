@@ -1,6 +1,16 @@
 /*
- * Basic RISC-V 32I ISA Test Program
- * Tests core integer instructions for FPGA CPU verification
+ * RISC-V 32I ISA Test Program
+ * Tests all base integer instructions for FPGA CPU verification.
+ *
+ * RV32I Coverage:
+ *   Loads:    LW, LB, LH, LBU, LHU
+ *   Stores:   SW, SB, SH
+ *   Arith:    ADD, ADDI, SUB, AND, ANDI, OR, ORI, XOR, XORI
+ *   Shifts:   SLL, SLLI, SRL, SRLI, SRA, SRAI
+ *   Compare:  SLT, SLTI, SLTU, SLTIU
+ *   Upper:    LUI, AUIPC
+ *   Control:  JAL, JALR, BEQ, BNE, BLT, BGE, BLTU, BGEU
+ *   (ECALL/EBREAK/FENCE: system-dependent, not tested here)
  */
 
 #include <stdint.h>
@@ -47,18 +57,23 @@ void test_arithmetic(void) {
     result = a ^ b;
     ASSERT(result == 15, "XOR");
     
-    // Shift left
+    // Shift left logical (immediate)
     result = a << 2;
-    ASSERT(result == 40, "SLL");
+    ASSERT(result == 40, "SLLI");
     
-    // Shift right logical
-    result = a >> 2;
-    ASSERT(result == 2, "SRL");
+    // Shift right logical (immediate)
+    result = (uint32_t)a >> 2;
+    ASSERT(result == 2, "SRLI");
     
-    // Shift right arithmetic
+    // Shift right logical (register) - variable shift amount
+    volatile uint32_t shift_amt = 3;
+    result = (uint32_t)(a << 3) >> shift_amt;
+    ASSERT(result == 10, "SRL");
+    
+    // Shift right arithmetic (immediate)
     volatile int32_t neg = -16;
     result = neg >> 2;
-    ASSERT(result == -4, "SRA");
+    ASSERT(result == -4, "SRAI");
     
     // Set less than
     result = (a < b) ? 1 : 0;
@@ -86,7 +101,7 @@ void test_memory(void) {
     array[0] = 42;
     ASSERT(array[0] == 42, "SW");
     
-    // Test byte operations (sign extension)
+    // Test byte operations (sign extension) - compiler may use LB or LBU+shift
     volatile int8_t byte_array[4] = {-1, 0, 127, -128};
     volatile int32_t byte_val;
     
@@ -105,6 +120,43 @@ void test_memory(void) {
     
     half_val = (int32_t)(uint16_t)half_array[0]; // Zero extend
     ASSERT(half_val == 65535, "LHU zero extend");
+}
+
+// Force generation of LB, LH, SB, SH, SRL via inline asm (compiler may optimize these away)
+void test_explicit_instructions(void) {
+    volatile uint8_t byte_buf[8] = {0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xff};
+    int32_t val;
+    uint32_t shift_result;
+    
+    // LB - load byte with sign extension
+    __asm__ volatile ("lb %0, 0(%1)" : "=r"(val) : "r"(&byte_buf[4]));
+    ASSERT(val == (int32_t)(int8_t)0x9a, "LB");
+    
+    // LH - load halfword with sign extension
+    byte_buf[0] = 0xff;
+    byte_buf[1] = 0xff;
+    __asm__ volatile ("lh %0, 0(%1)" : "=r"(val) : "r"(byte_buf));
+    ASSERT(val == -1, "LH");
+    
+    // SB - store byte
+    __asm__ volatile ("sb %0, 2(%1)" :: "r"((uint32_t)0xAB), "r"(byte_buf));
+    ASSERT(byte_buf[2] == 0xAB, "SB");
+    
+    // SH - store halfword
+    __asm__ volatile ("sh %0, 4(%1)" :: "r"((uint32_t)0x1234), "r"(byte_buf));
+    ASSERT(byte_buf[4] == 0x34 && byte_buf[5] == 0x12, "SH");
+    
+    // SRL - shift right logical (register operand)
+    __asm__ volatile ("srl %0, %1, %2" : "=r"(shift_result) : "r"((uint32_t)0x80000000), "r"((uint32_t)4));
+    ASSERT(shift_result == 0x08000000, "SRL");
+    
+    // SLL - shift left logical (register operand)
+    __asm__ volatile ("sll %0, %1, %2" : "=r"(shift_result) : "r"((uint32_t)1), "r"((uint32_t)5));
+    ASSERT(shift_result == 32, "SLL");
+    
+    // SRA - shift right arithmetic (register operand)
+    __asm__ volatile ("sra %0, %1, %2" : "=r"(shift_result) : "r"((uint32_t)(int32_t)-64), "r"((uint32_t)3));
+    ASSERT(shift_result == (uint32_t)(int32_t)-8, "SRA");
 }
 
 // Test control flow (branches)
@@ -178,12 +230,13 @@ int32_t add_function(int32_t a, int32_t b) {
     return a + b;
 }
 
-// Recursive function that doesn't require multiplication (rv32i doesn't have M extension)
-int32_t recursive_sum(int32_t n) {
+// Recursive function - noinline + volatile to force real recursion (tests JAL/JALR, stack)
+int32_t __attribute__((noinline)) recursive_sum(int32_t n) {
     if (n <= 0) {
         return 0;
     }
-    return n + recursive_sum(n - 1);
+    volatile int32_t rest = recursive_sum(n - 1);  /* prevents tail-call optimization */
+    return n + rest;
 }
 
 void test_functions(void) {
@@ -238,25 +291,42 @@ void test_upper_immediates(void) {
     value = 0x12345000;
     ASSERT((value >> 12) == 0x12345, "LUI");
     
-    // AUIPC would be tested with position-independent code
-    // For now, just verify we can create large constants
+    // Large constant via LUI
     value = 0xABCD0000;
-    ASSERT((value >> 16) == 0xABCD, "upper immediate");
+    ASSERT((value >> 16) == 0xABCD, "LUI large");
+    
+    // AUIPC - two consecutive auipc instructions; their results differ by 4
+    {
+        uint32_t pc1, pc2;
+        __asm__ volatile (
+            "auipc %0, 0\n"
+            "auipc %1, 0\n"
+            : "=r"(pc1), "=r"(pc2)
+        );
+        ASSERT(pc2 - pc1 == 4, "AUIPC");
+    }
+}
+
+// Callback for JALR test - must not be inlined
+static volatile int32_t jump_callback_flag = 0;
+
+void __attribute__((noinline)) jump_target(void) {
+    jump_callback_flag = 1;
 }
 
 // Test JAL and JALR (jump and link)
 void test_jumps(void) {
-    volatile int32_t called = 0;
+    jump_callback_flag = 0;
     
-    // JAL (jump and link) - tested via function calls
-    // JALR (jump and link register) - also via function calls
+    // JAL - direct function call uses JAL
+    jump_target();
+    ASSERT(jump_callback_flag == 1, "JAL");
     
-    void test_jump_target(void) {
-        called = 1;
-    }
-    
-    test_jump_target();
-    ASSERT(called == 1, "JAL/JALR");
+    // JALR - call through function pointer
+    jump_callback_flag = 0;
+    void (*fn)(void) = jump_target;
+    fn();
+    ASSERT(jump_callback_flag == 1, "JALR");
 }
 
 // Main test runner
@@ -265,17 +335,18 @@ int main(void) {
     test_passed = 0;
     test_failed = 0;
     test_result = 0;
-    
+
     // Run all tests
     test_arithmetic();
-    // test_memory();
+    test_memory();
+    test_explicit_instructions();
     test_branches();
     test_loops();
     test_functions();
     test_immediates();
     test_upper_immediates();
     test_jumps();
-    
+
     // Final result
     // If running on FPGA, you might want to output this to a register or memory location
     // For now, we'll use it as return value

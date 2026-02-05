@@ -14,5 +14,10 @@
 __pycache__/
 *.pyc
 
+# VSCode / editor junk (optional but recommended)
+.vscode/
+*.code-workspace
+*.sublime-workspace
+
 # macOS
 .DS_Store

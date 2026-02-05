@@ -72,7 +72,6 @@ ASMS = boot.S
 OBJS = $(SRCS:.c=.o) $(ASMS:.S=.o)
 TARGET = test_rv32i.elf
 BIN = test_rv32i.bin
-HEX = test_rv32i.hex
 DUMP = test_rv32i.dump
 
 # Check if compiler is available
@@ -94,24 +93,20 @@ CHECK_TOOLCHAIN = @if ! command -v $(CC) >/dev/null 2>&1 && \
 	fi
 
 # Default target
-all: check-toolchain $(TARGET) $(BIN) $(HEX) $(DUMP)
+all: check-toolchain $(TARGET) $(BIN) $(DUMP)
 
 # Check toolchain before building
 check-toolchain:
 	$(CHECK_TOOLCHAIN)
 
-# Build ELF executable
+# Build ELF executable (libgcc after OBJS so __mulsi3 etc. are pulled in)
 $(TARGET): $(OBJS) link.ld
-	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) -lgcc -o $@
 
 # Build binary file (for loading into FPGA)
 $(BIN): $(TARGET)
 	$(OBJCOPY) -O binary $< $@
 	@echo "Binary size: $$(stat -f%z $@ 2>/dev/null || stat -c%s $@ 2>/dev/null) bytes"
-
-# Build Intel HEX file (alternative format)
-$(HEX): $(TARGET)
-	$(OBJCOPY) -O ihex $< $@
 
 # Generate disassembly dump
 $(DUMP): $(TARGET)
@@ -126,7 +121,7 @@ $(DUMP): $(TARGET)
 
 # Clean build artifacts
 clean:
-	rm -f $(OBJS) $(TARGET) $(BIN) $(HEX) $(DUMP) test_rv32i.map
+	rm -f $(OBJS) $(TARGET) $(BIN) $(DUMP) test_rv32i.map
 
 # Show current configuration
 config:
@@ -155,12 +150,30 @@ asm: $(TARGET)
 size: $(TARGET)
 	$(SIZE) $(TARGET)
 
+# Verify RV32I instruction coverage in the dump
+verify-instructions: $(DUMP)
+	@echo "Checking RV32I instruction coverage..."
+	@missing=0; \
+	for insn in lb lh lw lbu lhu sb sh sw add addi sub and andi or ori xor xori \
+	             sll slli srl srli sra srai slt slti sltu sltiu lui auipc jal jalr \
+	             beq bne blt bge bltu bgeu; do \
+	  if ! grep -qE "\b$$insn\b" $(DUMP); then \
+	    echo "  MISSING: $$insn"; missing=$$((missing+1)); \
+	  fi; \
+	done; \
+	if [ $$missing -eq 0 ]; then \
+	  echo "  All RV32I instructions present in dump."; \
+	else \
+	  echo "  $$missing instruction(s) not found."; exit 1; \
+	fi
+
 # Help target
 help:
 	@echo "RISC-V 32I Test Program Makefile"
 	@echo ""
 	@echo "Targets:"
-	@echo "  all      - Build all output files (ELF, BIN, HEX, DUMP)"
+	@echo "  all      - Build all output files (ELF, BIN, DUMP)"
+	@echo "  verify-instructions - Check dump for RV32I coverage"
 	@echo "  clean    - Remove all build artifacts"
 	@echo "  config   - Show current build configuration"
 	@echo "  asm      - View disassembly of the compiled program"
@@ -180,4 +193,4 @@ help:
 	@echo "  ISA_EXTENSIONS=$(ISA_EXTENSIONS)"
 	@echo "  ABI=$(ABI)"
 
-.PHONY: all clean config asm size help
+.PHONY: all clean config asm size verify-instructions help

@@ -17,7 +17,7 @@ _start:
 
     /* jump to main() */
     la      t0, main
-    jr      t0
+    jalr    ra, 0(t0)
 
     /* If main ever returns, just spin here */
 1:

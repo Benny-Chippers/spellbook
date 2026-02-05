@@ -10,8 +10,7 @@ Basic test suite for verifying a RISC-V RV32I ISA implementation.
 
 - `test_rv32i.c`: main test program covering core RV32I instructions
 - `link.ld`: linker script (adjust memory addresses for your target)
-- `test_rv32i.hex` / `test_rv32i.bin`: example images produced from the ELF (optional to commit; regenerate any time)
-- `test_rv32i_code.v`: a Verilog-friendly representation of the program image (if you’re loading via `$readmemh`/ROM init)
+- `test_rv32i.bin`: program image produced from the ELF (load into CPU memory via `$fread`)
 
 ### Building
 
@@ -26,7 +25,7 @@ Install a RISC-V GCC toolchain that provides:
 #### Using the `Makefile` (recommended)
 
 ```bash
-# Build all outputs (ELF, BIN, HEX, DUMP)
+# Build all outputs (ELF, BIN, DUMP)
 make
 
 # Show available targets / current config
@@ -69,9 +68,8 @@ make ARCH=rv32i ISA_EXTENSIONS=mc
 riscv64-unknown-elf-gcc -march=rv32i -mabi=ilp32 -nostdlib -ffreestanding \
   -T link.ld -Wl,-Map,test_rv32i.map -o test_rv32i.elf test_rv32i.c
 
-# Produce raw binary and Intel HEX
+# Produce raw binary (for $fread in Verilog)
 riscv64-unknown-elf-objcopy -O binary test_rv32i.elf test_rv32i.bin
-riscv64-unknown-elf-objcopy -O ihex   test_rv32i.elf test_rv32i.hex
 
 # Disassembly for inspection
 riscv64-unknown-elf-objdump -d test_rv32i.elf > test_rv32i.dump
@@ -79,15 +77,24 @@ riscv64-unknown-elf-objdump -d test_rv32i.elf > test_rv32i.dump
 
 ### Test coverage
 
-The test program covers:
+The test program exercises the full RV32I base instruction set:
 
-1. **Arithmetic operations**: ADD, SUB, AND, OR, XOR, shifts (SLL, SRL, SRA), comparisons (SLT, SLTU)
-2. **Memory operations**: loads/stores (LW/SW), byte operations (LB/LBU), halfword (LH/LHU)
-3. **Control flow**: branches (BEQ, BNE, BLT, BGE, BLTU, BGEU)
-4. **Loops**: for/while loops
-5. **Function calls**: regular and recursive functions (exercises JAL/JALR)
-6. **Immediate operations**: ADDI, ANDI, ORI, XORI, SLTI, SLTIU
-7. **Upper immediates**: LUI, AUIPC patterns
+| Category  | Instructions |
+|-----------|--------------|
+| **Loads** | LW, LB, LH, LBU, LHU |
+| **Stores**| SW, SB, SH |
+| **Arithmetic** | ADD, ADDI, SUB, AND, ANDI, OR, ORI, XOR, XORI |
+| **Shifts** | SLL, SLLI, SRL, SRLI, SRA, SRAI |
+| **Compare** | SLT, SLTI, SLTU, SLTIU |
+| **Upper** | LUI, AUIPC |
+| **Control** | JAL, JALR, BEQ, BNE, BLT, BGE, BLTU, BGEU |
+
+*(ECALL, EBREAK, FENCE are system-dependent and not exercised.)*
+
+To verify instruction coverage after building, run:
+```bash
+make verify-instructions
+```
 
 ### Memory map
 
@@ -95,7 +102,6 @@ Edit `link.ld` to match your target memory map (the default is typically set up 
 
 ## Other useful files in this repo
 
-- `bin_to_verilog.py`: helper to convert binaries into Verilog-friendly formats
 - `mem_memlog.sv`: simple memory module with logging (handy for bring-up)
 - `boot.S`: minimal start-up / boot stub (if you’re doing bare-metal)
 - `small.c`: tiny test program for quick sanity checks
