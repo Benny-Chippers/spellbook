@@ -9,8 +9,10 @@ Basic test suite for verifying a RISC-V RV32I ISA implementation.
 ### Key files
 
 - `test_rv32i.c`: main test program covering core RV32I instructions
+- `test_vga.c`: VGA frame-buffer write/swap test program
 - `link.ld`: linker script (adjust memory addresses for your target)
-- `test_rv32i.bin`: program image produced from the ELF (load into CPU memory via `$fread`)
+- `vga_interface_properties.md`: interface-property notes and citations
+- `<program>.bin`: program image produced from the ELF (load into CPU memory via `$fread`)
 
 ### Building
 
@@ -25,8 +27,12 @@ Install a RISC-V GCC toolchain that provides:
 #### Using the `Makefile` (recommended)
 
 ```bash
-# Build all outputs (ELF, BIN, DUMP)
+# Build default program (PROGRAM=test_rv32i)
 make
+
+# Build a specific test program source file
+# (builds test_vga.c -> test_vga.elf/.bin/.dump)
+make PROGRAM=test_vga
 
 # Show available targets / current config
 make help
@@ -38,6 +44,27 @@ make clean
 # Inspect
 make asm
 make size
+```
+
+##### Selecting among multiple test scripts
+
+The `Makefile` uses:
+
+- `PROGRAM ?= test_rv32i`
+
+`PROGRAM` is the source basename (`.c` omitted). Artifacts are generated with matching names:
+
+- `$(PROGRAM).elf`
+- `$(PROGRAM).bin`
+- `$(PROGRAM).dump`
+- `$(PROGRAM).map`
+
+Examples:
+
+```bash
+make PROGRAM=test_rv32i
+make PROGRAM=test_vga
+make PROGRAM=small
 ```
 
 ##### Toolchain selection
@@ -95,6 +122,16 @@ To verify instruction coverage after building, run:
 ```bash
 make verify-instructions
 ```
+
+Note: `verify-instructions` is intended for the RV32I ISA test (`PROGRAM=test_rv32i`), not graphics/demo tests like `test_vga`.
+
+## VGA test timing guidance
+
+For `test_vga` simulation:
+
+- measured first frame swap: `348.47 ms`
+- second frame draw takes a similar amount of time
+- recommended simulation window for defined drawing-pattern checks: **900 ms to 1 s**
 
 ### Memory map
 

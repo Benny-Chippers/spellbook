@@ -53,10 +53,14 @@ CFLAGS = -march=$(FULL_ARCH) \
          -ffreestanding \
          -fno-builtin
 
+# Select which test source to build (without .c)
+PROGRAM ?= test_rv32i
+
 # Linker flags
+MAP = $(PROGRAM).map
 LDFLAGS = -T link.ld \
           -Wl,--gc-sections \
-          -Wl,-Map=test_rv32i.map
+          -Wl,-Map=$(MAP)
 
 # Optional flags (uncomment to use)
 # CFLAGS += -mstrict-align          # Force strict alignment
@@ -67,12 +71,12 @@ LDFLAGS = -T link.ld \
 # CFLAGS += -mno-div                # Don't use hardware division (if M extension not available)
 
 # Source files
-SRCS = test_rv32i.c
+SRCS = $(PROGRAM).c
 ASMS = boot.S
 OBJS = $(SRCS:.c=.o) $(ASMS:.S=.o)
-TARGET = test_rv32i.elf
-BIN = test_rv32i.bin
-DUMP = test_rv32i.dump
+TARGET = $(PROGRAM).elf
+BIN = $(PROGRAM).bin
+DUMP = $(PROGRAM).dump
 
 # Check if compiler is available
 CHECK_TOOLCHAIN = @if ! command -v $(CC) >/dev/null 2>&1 && \
@@ -121,7 +125,7 @@ $(DUMP): $(TARGET)
 
 # Clean build artifacts
 clean:
-	rm -f $(OBJS) $(TARGET) $(BIN) $(DUMP) test_rv32i.map
+	rm -f *.o *.elf *.bin *.dump *.map
 
 # Show current configuration
 config:
@@ -186,9 +190,11 @@ help:
 	@echo ""
 	@echo "  Set TOOLCHAIN_PREFIX if auto-detection fails:"
 	@echo "  Example: make TOOLCHAIN_PREFIX=riscv64-unknown-elf-"
+	@echo "  Select program source: make PROGRAM=test_vga"
 	@echo ""
 	@echo "Current settings:"
 	@echo "  TOOLCHAIN_PREFIX=$(TOOLCHAIN_PREFIX)"
+	@echo "  PROGRAM=$(PROGRAM)"
 	@echo "  ARCH=$(ARCH)"
 	@echo "  ISA_EXTENSIONS=$(ISA_EXTENSIONS)"
 	@echo "  ABI=$(ABI)"
