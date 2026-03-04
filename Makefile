@@ -77,6 +77,7 @@ OBJS = $(SRCS:.c=.o) $(ASMS:.S=.o)
 TARGET = $(PROGRAM).elf
 BIN = $(PROGRAM).bin
 DUMP = $(PROGRAM).dump
+MEM = $(PROGRAM).mem
 
 # Check if compiler is available
 CHECK_TOOLCHAIN = @if ! command -v $(CC) >/dev/null 2>&1 && \
@@ -97,7 +98,7 @@ CHECK_TOOLCHAIN = @if ! command -v $(CC) >/dev/null 2>&1 && \
 	fi
 
 # Default target
-all: check-toolchain $(TARGET) $(BIN) $(DUMP)
+all: check-toolchain $(TARGET) $(BIN) $(MEM) $(DUMP)
 
 # Check toolchain before building
 check-toolchain:
@@ -112,6 +113,11 @@ $(BIN): $(TARGET)
 	$(OBJCOPY) -O binary $< $@
 	@echo "Binary size: $$(stat -f%z $@ 2>/dev/null || stat -c%s $@ 2>/dev/null) bytes"
 
+# Build packed 32-bit memory init file (for $readmemh into logic [31:0] mem_array [...])
+$(MEM): $(TARGET)
+	@python3 -c 'from pathlib import Path; import sys; data=Path(sys.argv[1]).read_bytes(); data+=b"\x00"*((4-len(data)%4)%4); Path(sys.argv[2]).write_text("".join(format(int.from_bytes(data[i:i+4], "little"), "08x")+"\n" for i in range(0, len(data), 4)))' "$(BIN)" "$@"
+	@echo "Generated packed memory init file: $@"
+
 # Generate disassembly dump
 $(DUMP): $(TARGET)
 	$(OBJDUMP) -d -S $< > $@
@@ -125,7 +131,7 @@ $(DUMP): $(TARGET)
 
 # Clean build artifacts
 clean:
-	rm -f *.o *.elf *.bin *.dump *.map
+	rm -f *.o *.elf *.bin *.mem *.dump *.map
 
 # Show current configuration
 config:
@@ -176,7 +182,7 @@ help:
 	@echo "RISC-V 32I Test Program Makefile"
 	@echo ""
 	@echo "Targets:"
-	@echo "  all      - Build all output files (ELF, BIN, DUMP)"
+	@echo "  all      - Build all output files (ELF, BIN, MEM, DUMP)"
 	@echo "  verify-instructions - Check dump for RV32I coverage"
 	@echo "  clean    - Remove all build artifacts"
 	@echo "  config   - Show current build configuration"

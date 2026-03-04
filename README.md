@@ -135,7 +135,14 @@ For `test_vga` simulation:
 
 ### Memory map
 
-Edit `link.ld` to match your target memory map (the default is typically set up for a simple RAM-at-0 mapping).
+Default main-memory mapping in this repo:
+
+- Main RAM base: `0x00000000`
+- Main RAM size: `8192 x 32-bit` words (`32768 bytes`, `0x8000`)
+- Main RAM range: `0x00000000` .. `0x00007FFF`
+- Word index from byte address: `addr[14:2]` (valid `0..8191`)
+
+`link.ld` is configured for this geometry by default. If your target differs, update `ORIGIN`/`LENGTH` there.
 
 ## Other useful files in this repo
 

@@ -22,6 +22,7 @@
 
 #define VGA_HEIGHT      120u
 #define VGA_WIDTH_BYTES 80u
+#define VGA_ROW_ADDR_STRIDE 0x100u
 
 volatile uint32_t test_result = 0;
 volatile uint32_t test_passed = 0;
@@ -38,7 +39,9 @@ volatile uint32_t test_failed = 0;
     } while (0)
 
 static inline uint32_t color_addr(uint32_t color_base, uint32_t y, uint32_t x_byte) {
-    return color_base + (y << 8) + x_byte;
+    /* Coordinate addressing: Y selects row page, X selects byte-in-row.
+     * This is intentionally not contiguous y*80 linear addressing. */
+    return color_base + (y * VGA_ROW_ADDR_STRIDE) + x_byte;
 }
 
 static inline uint8_t pack_two_pixels(uint8_t even_x, uint8_t odd_x) {
@@ -59,6 +62,17 @@ static void write_store_size_smoke_test(void) {
     *r32 = 0x12345678u;/* word store path */
 
     ASSERT(1);
+}
+
+static void verify_coordinate_addressing(void) {
+    uint32_t a00 = color_addr(VGA_RED_BASE, 0u, 0u);
+    uint32_t a01 = color_addr(VGA_RED_BASE, 0u, 1u);
+    uint32_t a10 = color_addr(VGA_RED_BASE, 1u, 0u);
+
+    ASSERT(a00 == VGA_RED_BASE);
+    ASSERT((a01 - a00) == 1u);
+    ASSERT((a10 - a00) == VGA_ROW_ADDR_STRIDE);
+    ASSERT((color_addr(VGA_RED_BASE, 119u, 79u) - VGA_RED_BASE) == 0x774Fu);
 }
 
 static void draw_frame_a(void) {
@@ -106,6 +120,7 @@ int main(void) {
     test_passed = 0;
     test_failed = 0;
 
+    verify_coordinate_addressing();
     write_store_size_smoke_test();
 
     /* Frame 0: gradient bars */

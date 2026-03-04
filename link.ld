@@ -2,22 +2,29 @@
  * Linker script for RISC-V 32I bare metal test program
  * Adjust memory regions based on your FPGA memory map
  * 
- * Current configuration: 8KB total memory
+ * Current configuration: 32KB total memory (8192 x 32-bit words)
  */
 
 MEMORY
 {
-    /* Single unified 8KB RAM starting at 0x00000000.
+    /* Single unified RAM: 8192 x 32-bit words = 32768 bytes (0x8000),
+     * mapped at 0x00000000.
      * For FPGA, map your instruction/data memory so that
      * address 0x00000000 is where the CPU fetches _start.
      */
-    RAM (rwx) : ORIGIN = 0x00000000, LENGTH = 8K
+    RAM (rwx) : ORIGIN = 0x00000000, LENGTH = 0x8000
 }
 
 ENTRY(_start)
 
 SECTIONS
 {
+    /* Export RAM geometry for debug/testbench checks */
+    __ram_base = ORIGIN(RAM);
+    __ram_size_bytes = LENGTH(RAM);         /* 32768 */
+    __ram_size_words = LENGTH(RAM) / 4;     /* 8192  */
+    __ram_last_addr = ORIGIN(RAM) + LENGTH(RAM) - 1;
+
     /* Code section (.text) - executable instructions, including bootloader */
     /* _start (from boot.S) is placed first in .text.start at address 0x00000000 */
     .text ORIGIN(RAM) : {
@@ -57,17 +64,17 @@ SECTIONS
                              * - Small programs: 0x200 (512 bytes)
                              * - Medium programs: 0x400 (1KB) 
                              * - Larger programs: 0x800 (2KB)
-                             * Remember: stack + heap + code + data must fit in 8KB */
+                             * Remember: stack + heap + code + data must fit in RAM */
     _stack_end = .;        /* Top of stack (highest address) */
     
     /* Heap (if needed) - grows upward from _heap_start */
     _heap_start = .;
     _heap_end = ORIGIN(RAM) + LENGTH(RAM);  /* End of RAM */
     
-    /* Memory layout summary for 8KB (approximate):
+    /* Memory layout summary for 32KB (approximate):
      * - Bootloader + .text: from 0x00000000 upward
      * - .rodata/.data/.bss: following .text
      * - Stack: 1KB (adjustable)
-     * - Heap: Remaining space up to 8KB
+     * - Heap: Remaining space up to 32KB
      */
 }

@@ -10,7 +10,9 @@
 
 // Implemetation
 
-// mem_memlog mm (
+// mem_memlog # (
+//          .LOG_FILENAME("mem.log")
+//          ) mm (
 //         .i_clk      (i_clk),
 //         .i_reset_n  (i_reset_n),
 //         .i_memAddr  (i_memAddr),
@@ -23,10 +25,11 @@ module mem_memlog #(
     parameter string LOG_FILENAME = "mem.log"
 ) (
     input  logic        i_clk,
-    input  logic        i_reset_n,
+    input  logic        en_MEM,
+    input  logic        en_WB,
     input  logic [31:0] i_memAddr,
     input  logic [31:0] i_writeData,
-    input  logic [1:0]  i_ctrlMEM,   // [1]=read, [0]=write (per your comment)
+    input  mem_ctrl_t  i_ctrlMEM,   // [1]=read, [0]=write
     input  logic [31:0] i_readData
 );
     integer fd;
@@ -47,23 +50,20 @@ module mem_memlog #(
         end
     end
 
-    // Log writes on posedge (matches your memory write edge)
-    always @(posedge i_clk) begin
-        if (i_reset_n && i_ctrlMEM[0]) begin
+    // Log writes on falling edge (matches sim-stage timing in this design).
+    always @(negedge i_clk) begin
+        if (i_ctrlMEM[0] & en_MEM) begin
             $fdisplay(fd, "%0t,WRITE,0x%08h,%0d,0x%08h",
-                      $time, i_memAddr, i_memAddr[12:2], i_writeData);
+                      $time, i_memAddr, i_memAddr[14:2], i_writeData);
             $fflush(fd);
         end
     end
 
-    // Log reads on negedge (matches your memory read edge)
-    // Note: your mem read updates i_readData with a nonblocking assignment on the same negedge.
-    // The `#0` moves this print to the next time slot so i_readData reflects the read.
+    // Log reads on falling edge.
     always @(negedge i_clk) begin
-        if (i_reset_n && i_ctrlMEM[1]) begin
-            #0;
+        if (i_ctrlMEM[1] & en_WB) begin
             $fdisplay(fd, "%0t,READ,0x%08h,%0d,0x%08h",
-                      $time, i_memAddr, i_memAddr[12:2], i_readData);
+                      $time, i_memAddr, i_memAddr[14:2], i_readData);
             $fflush(fd);
         end
     end
