@@ -71,7 +71,8 @@ LDFLAGS = -T link.ld \
 # CFLAGS += -mno-div                # Don't use hardware division (if M extension not available)
 
 # Source files
-SRCS = $(PROGRAM).c
+COMMON_SRCS = vga_driver.c
+SRCS = $(PROGRAM).c $(COMMON_SRCS)
 ASMS = boot.S
 OBJS = $(SRCS:.c=.o) $(ASMS:.S=.o)
 TARGET = $(PROGRAM).elf
