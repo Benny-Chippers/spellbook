@@ -5,6 +5,7 @@
 *.dump
 *.bin
 *.hex
+tests/vga_image_link.h
 
 # Logs / temp files
 *.log

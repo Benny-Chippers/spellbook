@@ -1,80 +1,67 @@
 /*
- * Linker script for RISC-V 32I bare metal test program
- * Adjust memory regions based on your FPGA memory map
- * 
- * Current configuration: 32KB total memory (8192 x 32-bit words)
+ * Linker script for RISC-V bare-metal test programs (Wizard Core map).
+ * Source of truth: wizardCore/docs/memory_Map.md
+ *
+ * RAM: 128 KiB on-chip (32768 x 32-bit words), indexed by addr[16:2] in RTL.
+ * VGA: write-only MMIO (stores only from CPU; loads are not defined). Symbol anchors
+ * only — no ELF sections are placed in VGA regions.
  */
 
 MEMORY
 {
-    /* Single unified RAM: 8192 x 32-bit words = 32768 bytes (0x8000),
-     * mapped at 0x00000000.
-     * For FPGA, map your instruction/data memory so that
-     * address 0x00000000 is where the CPU fetches _start.
-     */
-    RAM (rwx) : ORIGIN = 0x00000000, LENGTH = 0x8000
+    RAM (rwx)       : ORIGIN = 0x00000000, LENGTH = 0x20000   /* 128 KiB */
+    VGA_FB (w!r!a)  : ORIGIN = 0x10000000, LENGTH = 0x7800     /* indexed FB, WO */
+    VGA_PAL (w!r!a) : ORIGIN = 0x10008000, LENGTH = 0x0300     /* palette R/G/B, WO */
+    VGA_SWAP (w!r!a): ORIGIN = 0x10030000, LENGTH = 0x4         /* frame toggle, WO */
 }
 
 ENTRY(_start)
 
 SECTIONS
 {
-    /* Export RAM geometry for debug/testbench checks */
+    /* On-chip RAM geometry (also exported to C via mmio_map.h) */
     __ram_base = ORIGIN(RAM);
-    __ram_size_bytes = LENGTH(RAM);         /* 32768 */
-    __ram_size_words = LENGTH(RAM) / 4;     /* 8192  */
+    __ram_size_bytes = LENGTH(RAM);
+    __ram_size_words = LENGTH(RAM) / 4;
     __ram_last_addr = ORIGIN(RAM) + LENGTH(RAM) - 1;
 
-    /* Code section (.text) - executable instructions, including bootloader */
-    /* _start (from boot.S) is placed first in .text.start at address 0x00000000 */
+    /* VGA write-only MMIO anchors — drivers store via MMIO_STORE*() in mmio_map.h */
+    __vga_fb_base = ORIGIN(VGA_FB);
+    __vga_palette_base = ORIGIN(VGA_PAL);
+    __vga_pal_green = ORIGIN(VGA_PAL) + 0x100;
+    __vga_pal_blue = ORIGIN(VGA_PAL) + 0x200;
+    __vga_swap_addr = ORIGIN(VGA_SWAP);
+
     .text ORIGIN(RAM) : {
-        *(.text.start)      /* Startup / bootloader code first */
-        *(.text)            /* All other code */
-        *(.text.*)          /* Code in sub-sections */
-        . = ALIGN(4);       /* Align to 4-byte boundary */
+        *(.text.start)
+        *(.text)
+        *(.text.*)
+        . = ALIGN(4);
     } > RAM
-    
-    /* Read-only data section (.rodata) - constants, strings */
+
     .rodata : {
-        *(.rodata)         /* Read-only data */
-        *(.rodata.*)       /* Read-only data in sub-sections */
+        *(.rodata)
+        *(.rodata.*)
         . = ALIGN(4);
     } > RAM
-    
-    /* Initialized data section (.data) - global/static variables with initial values */
+
     .data : {
-        *(.data)           /* Initialized data */
-        *(.data.*)         /* Initialized data in sub-sections */
+        *(.data)
+        *(.data.*)
         . = ALIGN(4);
     } > RAM
-    
-    /* Uninitialized data section (.bss) - global/static variables initialized to zero */
+
     .bss : {
-        *(.bss)            /* Uninitialized data */
-        *(.bss.*)          /* Uninitialized data in sub-sections */
-        *(COMMON)          /* Common symbols */
+        *(.bss)
+        *(.bss.*)
+        *(COMMON)
         . = ALIGN(4);
     } > RAM
-    
-    /* Stack pointer initialization */
-    /* Stack grows downward from _stack_end to _stack_start */
-    _stack_start = .;      /* Bottom of stack (lowest address) */
-    . += 0x400;            /* 1KB stack (0x400 = 1024 bytes) */
-                            /* Adjust this value based on your needs:
-                             * - Small programs: 0x200 (512 bytes)
-                             * - Medium programs: 0x400 (1KB) 
-                             * - Larger programs: 0x800 (2KB)
-                             * Remember: stack + heap + code + data must fit in RAM */
-    _stack_end = .;        /* Top of stack (highest address) */
-    
-    /* Heap (if needed) - grows upward from _heap_start */
+
+    _stack_start = .;
+    . += 0x400;            /* 1 KiB stack */
+    _stack_end = .;
+
     _heap_start = .;
-    _heap_end = ORIGIN(RAM) + LENGTH(RAM);  /* End of RAM */
-    
-    /* Memory layout summary for 32KB (approximate):
-     * - Bootloader + .text: from 0x00000000 upward
-     * - .rodata/.data/.bss: following .text
-     * - Stack: 1KB (adjustable)
-     * - Heap: Remaining space up to 32KB
-     */
+    _heap_end = ORIGIN(RAM) + LENGTH(RAM);
 }

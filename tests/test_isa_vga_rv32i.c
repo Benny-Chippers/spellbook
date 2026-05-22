@@ -1,13 +1,6 @@
 /*
- * Combined RV32I + VGA regression test.
- *
- * Runs ISA coverage checks, then exercises VGA memory-mapped interface by:
- *  - store-size smoke writes (SB/SH/SW)
- *  - drawing two full frames
- *  - verifying sampled bytes from each color plane
- *  - triggering frame swaps
- *
- * Returns 0 on pass, 1 on first failure.
+ * RV32I-only VGA regression (build: make RV32I_ONLY=1 PROGRAM=test_isa_vga_rv32i).
+ * Static equal-band gradient after ISA checks. For RV32IM + animated blue use test_isa_vga.
  */
 
 #include <stdint.h>
@@ -263,11 +256,9 @@ static void test_jumps(void) {
 
 /* ---------- VGA tests ---------- */
 
-#define CPU_HZ 5000000u
-/* delay_cycles() loop costs multiple instructions per iteration.
- * Calibrate iterations so wall-clock delay is close to 0.5 s at 5 MHz. */
-#define DELAY_LOOP_CPI_EST 4u
-#define HALF_SEC_ITERS (CPU_HZ / (2u * DELAY_LOOP_CPI_EST))
+#define CPU_HZ             50000000u
+#define DELAY_LOOP_CPI_EST 5u
+#define ONE_SEC_ITERS      (CPU_HZ / DELAY_LOOP_CPI_EST)
 
 static void delay_cycles(volatile uint32_t count) {
     while (count--) {
@@ -276,76 +267,46 @@ static void delay_cycles(volatile uint32_t count) {
 }
 
 static void verify_coordinate_addressing(void) {
-    uint32_t a00 = vga_color_addr_fast(VGA_RED_BASE, 0u, 0u);
-    uint32_t a01 = vga_color_addr_fast(VGA_RED_BASE, 0u, 1u);
-    uint32_t a10 = vga_color_addr_fast(VGA_RED_BASE, 1u, 0u);
+    uint32_t a00 = vga_fb_addr_fast(0u, 0u);
+    uint32_t a01 = vga_fb_addr_fast(0u, 1u);
+    uint32_t a10 = vga_fb_addr_fast(1u, 0u);
 
-    ASSERT(a00 == VGA_RED_BASE, 103);
+    ASSERT(a00 == VGA_FB_BASE, 103);
     ASSERT((a01 - a00) == 1u, 104);
     ASSERT((a10 - a00) == VGA_ROW_ADDR_STRIDE, 105);
-    ASSERT((vga_color_addr_fast(VGA_RED_BASE, 119u, 79u) - VGA_RED_BASE) == 0x774Fu, 106);
+    ASSERT((vga_fb_addr_fast(119u, 159u) - VGA_FB_BASE) == 0x779Fu, 106);
 }
 
 static void vga_store_size_smoke_test(void) {
-    volatile uint8_t *r8 = (volatile uint8_t *)vga_color_addr_fast(VGA_RED_BASE, 0u, 0u);
-    volatile uint16_t *r16 = (volatile uint16_t *)vga_color_addr_fast(VGA_RED_BASE, 0u, 2u);
-    volatile uint32_t *r32 = (volatile uint32_t *)vga_color_addr_fast(VGA_RED_BASE, 0u, 4u);
+    volatile uint8_t *fb8 = (volatile uint8_t *)vga_fb_addr_fast(0u, 0u);
+    volatile uint16_t *fb16 = (volatile uint16_t *)vga_fb_addr_fast(0u, 0u);
+    volatile uint32_t *fb32 = (volatile uint32_t *)vga_fb_addr_fast(0u, 0u);
 
-    *r8 = 0xA5u;
-    *r16 = 0x5AA5u;
-    *r32 = 0x12345678u;
+    *fb8 = 0xA5u;
+    *fb16 = 0x5AA5u;
+    *fb32 = 0x12345678u;
 }
 
-static uint8_t frame_a_red_row[VGA_WIDTH_BYTES];
-static uint8_t frame_b_red_row_even[VGA_WIDTH_BYTES];
-static uint8_t frame_b_red_row_odd[VGA_WIDTH_BYTES];
-static uint8_t frame_b_blue_row_even[VGA_WIDTH_BYTES];
-static uint8_t frame_b_blue_row_odd[VGA_WIDTH_BYTES];
+static void init_gradient_palette(void) {
+    vga_init_palette_rg_blue15_fast();
+}
 
-static void init_vga_rows(void) {
-    for (uint32_t xb = 0; xb < VGA_WIDTH_BYTES; ++xb) {
-        uint8_t x0 = (uint8_t)(xb << 1);
-        uint8_t x1 = (uint8_t)(x0 + 1u);
-        frame_a_red_row[xb] = vga_pack_two_pixels_fast((uint8_t)(x0 >> 4), (uint8_t)(x1 >> 4));
-
-        {
-            uint8_t even_checker = (uint8_t)((xb & 1u) ? 0xEu : 0x1u);
-            uint8_t odd_checker = (uint8_t)((xb & 1u) ? 0x1u : 0xEu);
-            uint8_t even_inv = (uint8_t)(0xFu - even_checker);
-            uint8_t odd_inv = (uint8_t)(0xFu - odd_checker);
-
-            frame_b_red_row_even[xb] = vga_pack_two_pixels_fast(even_checker, even_checker);
-            frame_b_red_row_odd[xb] = vga_pack_two_pixels_fast(odd_checker, odd_checker);
-            frame_b_blue_row_even[xb] = vga_pack_two_pixels_fast(even_inv, even_inv);
-            frame_b_blue_row_odd[xb] = vga_pack_two_pixels_fast(odd_inv, odd_inv);
+/*
+ * White (RGB 0xFFF) at (0,0); pure blue (RGB 0x00F) at bottom-right (159,119).
+ * Sixteen equal-ish bands per axis (R: 10 px each; G: 8/7 px alternating).
+ */
+static void __attribute__((noinline)) draw_gradient_frame(void) {
+    for (uint32_t y = 0; y < VGA_HEIGHT; ++y) {
+        uint8_t g = vga_gradient_g_equal_band_fast(y);
+        for (uint32_t x = 0; x < VGA_WIDTH; ++x) {
+            uint8_t r = vga_gradient_r_equal_band_fast(x);
+            vga_write_index_fast(y, x, vga_palette_index_from_rg_fast(r, g));
         }
     }
 }
 
-static void draw_frame_a(void) {
-    uint8_t blue_byte = vga_pack_two_pixels_fast(0x2u, 0x2u);
-
-    for (uint32_t y = 0; y < VGA_HEIGHT; y++) {
-        uint8_t green_byte = vga_pack_two_pixels_fast((uint8_t)(y >> 3), (uint8_t)(y >> 3));
-        vga_write_rgb_row_r_const_gb_fast(y, frame_a_red_row, green_byte, blue_byte, VGA_WIDTH_BYTES);
-    }
-}
-
-static void draw_frame_b(void) {
-    uint8_t green_byte = vga_pack_two_pixels_fast(0x0u, 0x0u);
-    for (uint32_t y = 0; y < VGA_HEIGHT; y++) {
-        const uint8_t *red_row = ((y & 1u) == 0u) ? frame_b_red_row_even : frame_b_red_row_odd;
-        const uint8_t *blue_row = ((y & 1u) == 0u) ? frame_b_blue_row_even : frame_b_blue_row_odd;
-        vga_write_rgb_row_rb_const_g_fast(y, red_row, blue_row, green_byte, VGA_WIDTH_BYTES);
-    }
-}
-
 static void draw_fail_screen_red(void) {
-    uint8_t red = vga_pack_two_pixels_fast(0xFu, 0xFu);
-    uint8_t zero = vga_pack_two_pixels_fast(0x0u, 0x0u);
-    for (uint32_t y = 0; y < VGA_HEIGHT; y++) {
-        vga_fill_rgb_row_constant_fast(y, red, zero, zero, VGA_WIDTH_BYTES);
-    }
+    vga_fill_screen_fail_red_fast();
 }
 
 int main(void) {
@@ -355,7 +316,6 @@ int main(void) {
     fail_code = 0;
     vga_stage = 0;
 
-    /* ISA regression */
     test_arithmetic();
     if (test_result) { goto fail_screen; }
     test_memory();
@@ -375,34 +335,26 @@ int main(void) {
     test_jumps();
     if (test_result) { goto fail_screen; }
 
-    /* VGA regression */
     verify_coordinate_addressing();
     if (test_result) { goto fail_screen; }
-    vga_stage = 1; /* address mapping checks passed */
+    vga_stage = 1;
     vga_store_size_smoke_test();
     if (test_result) { goto fail_screen; }
-    vga_stage = 2; /* smoke writes completed */
-    init_vga_rows();
+    vga_stage = 2;
+    init_gradient_palette();
 
-    /* Success mode: continuously swap test patterns every 0.5 s at 5 MHz. */
     for (;;) {
-        draw_frame_a();
-        vga_stage = 3; /* frame A written */
+        draw_gradient_frame();
+        vga_stage = 3;
         swap_frame();
-        delay_cycles(HALF_SEC_ITERS);
-
-        draw_frame_b();
-        vga_stage = 4; /* frame B written */
-        swap_frame();
-        delay_cycles(HALF_SEC_ITERS);
+        delay_cycles(ONE_SEC_ITERS);
     }
 
 fail_screen:
-    /* Failure mode: show solid red and hold. */
     vga_stage = 0xFFu;
     draw_fail_screen_red();
     swap_frame();
     for (;;) {
-        delay_cycles(HALF_SEC_ITERS);
+        delay_cycles(ONE_SEC_ITERS);
     }
 }

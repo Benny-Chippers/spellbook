@@ -1,165 +1,86 @@
 # spellbook
 
-RV32I test + small helper files for bringing up a RISC-V core (e.g. on FPGA / simulation).
+RV32I test programs and helper code for bringing up the **Wizard Core** RISC-V CPU (FPGA / simulation).
 
-## RV32I test program
+**Documentation:** [docs/README.md](docs/README.md) — VGA memory map, driver API, interface properties, integration plans.
 
-Basic test suite for verifying a RISC-V RV32I ISA implementation.
+## Layout
 
-### Key files
+| Path | Purpose |
+|------|---------|
+| `tests/` | Bare-metal programs (`make PROGRAM=<name>` builds `tests/<name>.c`) |
+| `drivers/` | `vga_driver`, `vga_text` (`-Idrivers` in Makefile) |
+| `docs/` | VGA and integration documentation |
+| `scripts/` | Image embed tools |
+| `boot.S`, `link.ld` | Boot stub and linker script |
 
-- `test_rv32i.c`: main test program covering core RV32I instructions
-- `test_vga.c`: VGA frame-buffer write/swap test program
-- `link.ld`: linker script (adjust memory addresses for your target)
-- `vga_interface_properties.md`: interface-property notes and citations
-- `<program>.bin`: program image produced from the ELF (load into CPU memory via `$fread`)
+## Building
 
-### Building
+### Prerequisites
 
-#### Prerequisites
+RISC-V GCC toolchain: `riscv64-unknown-elf-gcc`, `objcopy`, `objdump`.
 
-Install a RISC-V GCC toolchain that provides:
-
-- `riscv64-unknown-elf-gcc` (or `riscv32-unknown-elf-gcc`)
-- `riscv64-unknown-elf-objcopy`
-- `riscv64-unknown-elf-objdump`
-
-#### Using the `Makefile` (recommended)
+### Makefile
 
 ```bash
-# Build default program (PROGRAM=test_rv32i)
-make
-
-# Build a specific test program source file
-# (builds test_vga.c -> test_vga.elf/.bin/.dump)
-make PROGRAM=test_vga
-
-# Show available targets / current config
-make help
-make config
-
-# Clean build artifacts
+make                              # default: test_rv32i (rv32im)
+make RV32I_ONLY=1 PROGRAM=test_isa_vga_rv32i   # rv32i Verilator bring-up
+make PROGRAM=test_isa_vga                 # rv32im + M tests + blue anim
+make PROGRAM=render_image         # BMP → embedded frame data
+make verify-instructions          # RV32I opcode coverage in dump
 make clean
-
-# Inspect
-make asm
-make size
+make help
 ```
 
-##### Selecting among multiple test scripts
+`PROGRAM` is the basename of `tests/$(PROGRAM).c`. Outputs: `$(PROGRAM).elf`, `.bin`, `.mem`, `.dump`.
 
-The `Makefile` uses:
+Toolchain override: `make TOOLCHAIN_PREFIX=riscv64-unknown-elf-`
 
-- `PROGRAM ?= test_rv32i`
-
-`PROGRAM` is the source basename (`.c` omitted). Artifacts are generated with matching names:
-
-- `$(PROGRAM).elf`
-- `$(PROGRAM).bin`
-- `$(PROGRAM).dump`
-- `$(PROGRAM).map`
-
-Examples:
+## Loading into simulation
 
 ```bash
-make PROGRAM=test_rv32i
-make PROGRAM=test_vga
-make PROGRAM=small
+make RV32I_ONLY=1 PROGRAM=test_isa_vga_rv32i
+cp test_isa_vga_rv32i.mem ../wizardCore/scripts/
+cd ../wizardCore && make simview
 ```
 
-##### Toolchain selection
+Capstone loads the hex file via `$readmemh` in `mem_memory.sv` (default `INIT_FILENAME = test_isa_vga.mem`).
 
-The `Makefile` tries to auto-detect a working RISC-V toolchain. If that fails, set `TOOLCHAIN_PREFIX` explicitly:
+## Test programs
+
+| Program | Purpose |
+|---------|---------|
+| `test_rv32i` | Full RV32I ISA coverage |
+| `test_rv32m` | RV32M multiply/divide smoke tests |
+| `test_isa_vga_rv32i` | RV32I + static VGA gradient (Verilator bring-up) |
+| `test_isa_vga` | RV32I+M + VGA gradient with 1 s blue ramp |
+| `test_vga` | VGA addressing and frame swap |
+| `test_mem_hammer` | RAM integrity patterns |
+| `render_image` | Blit embedded 160×120 BMP |
+| `small` | Minimal sanity check |
+
+## Memory map (on-chip RAM)
+
+- Base `0x00000000`, 32768 × 32-bit words (`0x20000` bytes / 128 KiB)
+- Word index: `addr[16:2]`
+
+VGA map (indexed FB + palette): see [docs/vga/overview.md](docs/vga/overview.md).
+
+## Static VGA image render
 
 ```bash
-make TOOLCHAIN_PREFIX=riscv64-unknown-elf-
+make PROGRAM=render_image
+make PROGRAM=render_gaysans    # gaysans.txt alias
 ```
 
-##### Architecture / ABI options
+`scripts/embed_vga_image.py` accepts 160×120 24-bit BMP or gaysans `.txt`. `tests/render_image.c` blits via the palette driver.
 
-You can override these at build time:
+## Other files
 
-```bash
-# Base RV32I (default)
-make ARCH=rv32i ABI=ilp32
+- `mem_memlog.sv` — optional memory transaction logger for simulation
+- `boot.S` — sets `sp`, jumps to `main`
 
-# Add extensions (examples)
-make ARCH=rv32i ISA_EXTENSIONS=m
-make ARCH=rv32i ISA_EXTENSIONS=mc
-```
+## AI usage policy
 
-#### Manual build commands (no Makefile)
-
-```bash
-# Build ELF
-riscv64-unknown-elf-gcc -march=rv32i -mabi=ilp32 -nostdlib -ffreestanding \
-  -T link.ld -Wl,-Map,test_rv32i.map -o test_rv32i.elf test_rv32i.c
-
-# Produce raw binary (for $fread in Verilog)
-riscv64-unknown-elf-objcopy -O binary test_rv32i.elf test_rv32i.bin
-
-# Disassembly for inspection
-riscv64-unknown-elf-objdump -d test_rv32i.elf > test_rv32i.dump
-```
-
-### Test coverage
-
-The test program exercises the full RV32I base instruction set:
-
-| Category  | Instructions |
-|-----------|--------------|
-| **Loads** | LW, LB, LH, LBU, LHU |
-| **Stores**| SW, SB, SH |
-| **Arithmetic** | ADD, ADDI, SUB, AND, ANDI, OR, ORI, XOR, XORI |
-| **Shifts** | SLL, SLLI, SRL, SRLI, SRA, SRAI |
-| **Compare** | SLT, SLTI, SLTU, SLTIU |
-| **Upper** | LUI, AUIPC |
-| **Control** | JAL, JALR, BEQ, BNE, BLT, BGE, BLTU, BGEU |
-
-*(ECALL, EBREAK, FENCE are system-dependent and not exercised.)*
-
-To verify instruction coverage after building, run:
-```bash
-make verify-instructions
-```
-
-Note: `verify-instructions` is intended for the RV32I ISA test (`PROGRAM=test_rv32i`), not graphics/demo tests like `test_vga`.
-
-## VGA test timing guidance
-
-For `test_vga` simulation:
-
-- measured first frame swap: `348.47 ms`
-- second frame draw takes a similar amount of time
-- recommended simulation window for defined drawing-pattern checks: **900 ms to 1 s**
-
-### Memory map
-
-Default main-memory mapping in this repo:
-
-- Main RAM base: `0x00000000`
-- Main RAM size: `8192 x 32-bit` words (`32768 bytes`, `0x8000`)
-- Main RAM range: `0x00000000` .. `0x00007FFF`
-- Word index from byte address: `addr[14:2]` (valid `0..8191`)
-
-`link.ld` is configured for this geometry by default. If your target differs, update `ORIGIN`/`LENGTH` there.
-
-## Other useful files in this repo
-
-- `mem_memlog.sv`: simple memory module with logging (handy for bring-up)
-- `boot.S`: minimal start-up / boot stub (if you’re doing bare-metal)
-- `small.c`: tiny test program for quick sanity checks
-
-## AI usage policy (Spellbook / Wizard Core)
-
-- **Project codenames**:
-  - **Spellbook**: test/code-generation utilities and RISC-V test programs
-  - **Wizard Core**: the CPU RTL / Verilog implementation
-- **AI-assisted work (allowed in Spellbook)**:
-  - AI tools may be used to help **write or refactor code in Spellbook**, including scripts and test code that generate/validate RV32I test programs.
-  - When AI is used, the expectation is that outputs are reviewed, tested, and adjusted by a human before merging.
-- **No-AI guarantee (Wizard Core RTL)**:
-  - **AI is not used to generate the Wizard Core CPU Verilog/RTL.**
-  - The CPU implementation is written and maintained by humans to preserve authorship clarity and reduce the risk of subtle functional/corner-case errors from generated RTL.
-- **Scope note**:
-  - This policy is about *authorship of code*. Using AI for high-level brainstorming or documentation is fine, but **generated Verilog for Wizard Core is explicitly out of scope / not accepted**.
+- **Spellbook** (this repo): AI-assisted code is allowed; review before merge.
+- **Wizard Core RTL** (`wizardCore/`): CPU Verilog is human-authored, not AI-generated.

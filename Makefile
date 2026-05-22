@@ -1,5 +1,5 @@
-# Makefile for RISC-V 32I Test Program
-# Easily configurable for different RISC-V architecture options
+# Makefile for RISC-V bare-metal test programs
+# Default ISA: rv32im. Use RV32I_ONLY=1 for rv32i (macOS Verilator / RTL without M).
 
 # Compiler settings
 # Try to auto-detect RISC-V toolchain, or set manually
@@ -30,20 +30,51 @@ SIZE = $(TOOLCHAIN_PREFIX)size
 ARCH = rv32i
 ABI = ilp32
 
-# Additional ISA extensions (add as needed)
-# Examples: m (multiply/divide), a (atomic), c (compressed), f (float), d (double)
-ISA_EXTENSIONS = 
+# Default rv32im; RV32I_ONLY=1 strips M (Verilator sim on macOS when RTL is rv32i-only)
+ISA_EXTENSIONS ?= m
+ifeq ($(RV32I_ONLY),1)
+override ISA_EXTENSIONS :=
+endif
+
+# Select bare-metal application (basename of tests/$(PROGRAM).c)
+PROGRAM ?= test_rv32i
+
+# Source layout overrides (must precede VGA image paths below)
+TESTS_DIR ?= tests
+DRIVERS_DIR ?= drivers
+
+# --- Static VGA image embed (render_image / render_gaysans) ---
+RENDER_IMAGE_PROGRAMS := render_image render_gaysans
+VGA_IMAGE_SRC ?= images/plankton.bmp
+VGA_IMAGE_ARRAY ?= vga_image_rgb
+VGA_IMAGE_C ?= $(TESTS_DIR)/vga_image_data.c
+VGA_IMAGE_H ?= $(TESTS_DIR)/vga_image_data.h
+PROGRAM_SRC ?=
+
+ifeq ($(PROGRAM),render_gaysans)
+VGA_IMAGE_SRC := gaysans.txt
+VGA_IMAGE_ARRAY := gaysans_rgb
+VGA_IMAGE_C := $(TESTS_DIR)/gaysans_bitmap.c
+VGA_IMAGE_H := $(TESTS_DIR)/gaysans_bitmap.h
+endif
+
+ifeq ($(filter $(PROGRAM),$(RENDER_IMAGE_PROGRAMS)),$(PROGRAM))
+PROGRAM_SRC := render_image.c
+PROGRAM_EXTRA_SRCS := $(VGA_IMAGE_C)
+VGA_IMAGE_LINK_H := $(TESTS_DIR)/vga_image_link.h
+endif
 
 # Build full architecture string
-ifneq ($(ISA_EXTENSIONS),)
-    FULL_ARCH = $(ARCH)$(ISA_EXTENSIONS)
+ifneq ($(strip $(ISA_EXTENSIONS)),)
+FULL_ARCH := $(ARCH)$(ISA_EXTENSIONS)
 else
-    FULL_ARCH = $(ARCH)
+FULL_ARCH := $(ARCH)
 endif
 
 # Compiler flags
 CFLAGS = -march=$(FULL_ARCH) \
          -mabi=$(ABI) \
+         -I$(DRIVERS_DIR) \
          -O2 \
          -Wall \
          -Wextra \
@@ -52,9 +83,6 @@ CFLAGS = -march=$(FULL_ARCH) \
          -nostartfiles \
          -ffreestanding \
          -fno-builtin
-
-# Select which test source to build (without .c)
-PROGRAM ?= test_rv32i
 
 # Linker flags
 MAP = $(PROGRAM).map
@@ -70,9 +98,10 @@ LDFLAGS = -T link.ld \
 # CFLAGS += -msave-restore          # Use library calls for prologue/epilogue
 # CFLAGS += -mno-div                # Don't use hardware division (if M extension not available)
 
-# Source files
-COMMON_SRCS = vga_driver.c
-SRCS = $(PROGRAM).c $(COMMON_SRCS)
+# Source files (bare-metal apps under tests/, VGA helpers under drivers/)
+COMMON_SRCS = $(DRIVERS_DIR)/vga_driver.c
+PROGRAM_EXTRA_SRCS ?=
+SRCS = $(TESTS_DIR)/$(if $(PROGRAM_SRC),$(PROGRAM_SRC),$(PROGRAM).c) $(COMMON_SRCS) $(PROGRAM_EXTRA_SRCS)
 ASMS = boot.S
 OBJS = $(SRCS:.c=.o) $(ASMS:.S=.o)
 TARGET = $(PROGRAM).elf
@@ -98,7 +127,8 @@ CHECK_TOOLCHAIN = @if ! command -v $(CC) >/dev/null 2>&1 && \
 	exit 1; \
 	fi
 
-# Default target
+
+# Default goal
 all: check-toolchain $(TARGET) $(BIN) $(MEM) $(DUMP)
 
 # Check toolchain before building
@@ -127,12 +157,26 @@ $(DUMP): $(TARGET)
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+# render_image.o must recompile when the selected embedded header changes
+ifneq ($(filter $(PROGRAM),$(RENDER_IMAGE_PROGRAMS)),)
+$(TESTS_DIR)/render_image.o: force
+endif
+$(TESTS_DIR)/render_image.o: $(TESTS_DIR)/render_image.c $(VGA_IMAGE_C) $(VGA_IMAGE_H) scripts/embed_vga_image.py
+	@echo '#include "$(notdir $(VGA_IMAGE_H))"' > $(VGA_IMAGE_LINK_H)
+	$(CC) $(CFLAGS) -c $(TESTS_DIR)/render_image.c -o $@
+
+# Regenerate embedded VGA frame from BMP or gaysans .txt
+$(VGA_IMAGE_C): $(VGA_IMAGE_SRC) scripts/embed_vga_image.py
+	python3 scripts/embed_vga_image.py "$(VGA_IMAGE_SRC)" "$(VGA_IMAGE_C)" "$(VGA_IMAGE_H)" "$(VGA_IMAGE_ARRAY)"
+	@echo '#include "$(notdir $(VGA_IMAGE_H))"' > $(VGA_IMAGE_LINK_H)
+
 %.o: %.S
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Clean build artifacts
 clean:
-	rm -f *.o *.elf *.bin *.mem *.dump *.map
+	rm -f $(TESTS_DIR)/*.o $(DRIVERS_DIR)/*.o *.o *.elf *.bin *.mem *.dump *.map
+	rm -f $(TESTS_DIR)/vga_image_link.h
 
 # Show current configuration
 config:
@@ -140,6 +184,7 @@ config:
 	@echo "  Toolchain prefix: $(TOOLCHAIN_PREFIX)"
 	@echo "  Architecture: $(FULL_ARCH)"
 	@echo "  ABI: $(ABI)"
+	@echo "  RV32I_ONLY: $(RV32I_ONLY)"
 	@echo "  Compiler: $(CC)"
 	@echo "  CFLAGS: $(CFLAGS)"
 	@echo ""
@@ -178,13 +223,30 @@ verify-instructions: $(DUMP)
 	  echo "  $$missing instruction(s) not found."; exit 1; \
 	fi
 
+# Verify RV32M presence in the dump
+verify-rv32m-instructions:
+	@$(MAKE) check-toolchain PROGRAM=test_rv32m test_rv32m.dump
+	@echo "Checking RV32M instruction coverage..."
+	@missing=0; \
+	for insn in mul mulh mulhu mulhsu div divu rem remu; do \
+	  if ! grep -qE "\b$$insn\b" test_rv32m.dump; then \
+	    echo "  MISSING: $$insn"; missing=$$((missing+1)); \
+	  fi; \
+	done; \
+	if [ $$missing -eq 0 ]; then \
+	  echo "  All RV32M instructions present in test_rv32m.dump."; \
+	else \
+	  echo "  $$missing instruction(s) not found."; exit 1; \
+	fi
+
 # Help target
 help:
-	@echo "RISC-V 32I Test Program Makefile"
+	@echo "RISC-V bare-metal test program Makefile (default: rv32im)"
 	@echo ""
 	@echo "Targets:"
 	@echo "  all      - Build all output files (ELF, BIN, MEM, DUMP)"
 	@echo "  verify-instructions - Check dump for RV32I coverage"
+	@echo "  verify-rv32m-instructions - Build test_rv32m.dump and check M-extension coverage"
 	@echo "  clean    - Remove all build artifacts"
 	@echo "  config   - Show current build configuration"
 	@echo "  asm      - View disassembly of the compiled program"
@@ -192,18 +254,25 @@ help:
 	@echo "  help     - Show this help message"
 	@echo ""
 	@echo "Configuration:"
-	@echo "  Edit ARCH, ABI, and ISA_EXTENSIONS variables to change architecture"
-	@echo "  Example: make ARCH=rv32i ISA_EXTENSIONS=m ABI=ilp32"
+	@echo "  Default march is rv32im (ISA_EXTENSIONS=m). Override extensions: make ISA_EXTENSIONS=mc"
+	@echo "  Verilator / rv32i-only RTL: make RV32I_ONLY=1 ..."
+	@echo "  Example: make RV32I_ONLY=1 PROGRAM=test_isa_vga"
 	@echo ""
 	@echo "  Set TOOLCHAIN_PREFIX if auto-detection fails:"
 	@echo "  Example: make TOOLCHAIN_PREFIX=riscv64-unknown-elf-"
 	@echo "  Select program source: make PROGRAM=test_vga"
+	@echo "  Static bitmap: make PROGRAM=render_image (default: images/plankton.bmp)"
+	@echo "  Gaysans text:  make PROGRAM=render_gaysans"
+	@echo "  Custom image:  make PROGRAM=render_image VGA_IMAGE_SRC=path/to/file.bmp \\"
+	@echo "                   VGA_IMAGE_C=tests/my_image.c VGA_IMAGE_H=tests/my_image.h VGA_IMAGE_ARRAY=my_rgb"
 	@echo ""
 	@echo "Current settings:"
 	@echo "  TOOLCHAIN_PREFIX=$(TOOLCHAIN_PREFIX)"
 	@echo "  PROGRAM=$(PROGRAM)"
 	@echo "  ARCH=$(ARCH)"
 	@echo "  ISA_EXTENSIONS=$(ISA_EXTENSIONS)"
+	@echo "  FULL_ARCH=$(FULL_ARCH)"
+	@echo "  RV32I_ONLY=$(RV32I_ONLY)"
 	@echo "  ABI=$(ABI)"
 
-.PHONY: all clean config asm size verify-instructions help
+.PHONY: all clean config asm size verify-instructions verify-rv32m-instructions help force
