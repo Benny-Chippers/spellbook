@@ -1,15 +1,26 @@
 #include "bmp_handler.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <sys/stat.h>
+
+#define OUT_DIR "../build/pong-tools"
 
 int main()
 {
     FILE *fptr;
+    char path[256];
     bmp paddle = read_bmp("./include/sprites/paddle.bmp");
     bmp background = read_bmp("./include/sprites/background.bmp");
     bmp ball = read_bmp("./include/sprites/ball.bmp");
 
-    fptr = fopen("palette.txt", "w");
+    (void)paddle;
+    (void)ball;
+
+    mkdir("../build", 0777);
+    mkdir(OUT_DIR, 0777);
+
+    snprintf(path, sizeof(path), "%s/palette.txt", OUT_DIR);
+    fptr = fopen(path, "w");
     for(int i = 0; i < sizeof(background.palette)/sizeof(background.palette[0]); i++){
         fprintf(fptr, "%d,", background.palette[i].red);
         fprintf(fptr, "%d,", background.palette[i].green);
@@ -17,7 +28,8 @@ int main()
     }
     fclose(fptr);
 
-    fptr = fopen("background_pixels.txt", "w");
+    snprintf(path, sizeof(path), "%s/background_pixels.txt", OUT_DIR);
+    fptr = fopen(path, "w");
     int counter = 0;
     for(int i = 0; i < background.dib_header.width * background.dib_header.height; i++){
         counter++;

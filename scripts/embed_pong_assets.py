@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Embed 8-bit indexed pong BMP sprites into pong/pong_assets.{h,c}."""
+"""Embed 8-bit indexed pong BMP sprites into generated pong_assets.{h,c}."""
 from __future__ import annotations
 
 import struct
@@ -50,10 +50,16 @@ def emit_array(name: str, values: bytes | list[int]) -> list[str]:
 
 
 def main() -> None:
+    if len(sys.argv) > 2:
+        print("usage: embed_pong_assets.py [out_dir]", file=sys.stderr)
+        raise SystemExit(2)
+
     root = Path(__file__).resolve().parents[1]
     sprite_dir = root / "pong" / "include" / "sprites"
-    out_c = root / "pong" / "pong_assets.c"
-    out_h = root / "pong" / "pong_assets.h"
+    out_dir = Path(sys.argv[1]) if len(sys.argv) == 2 else root / "build" / "pong" / "generated"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_c = out_dir / "pong_assets.c"
+    out_h = out_dir / "pong_assets.h"
 
     bg_w, bg_h, palette, bg_px = read_indexed_bmp(sprite_dir / "background.bmp")
     pad_w, pad_h, _, pad_px = read_indexed_bmp(sprite_dir / "paddle.bmp")

@@ -47,32 +47,36 @@ endif
 # Source layout overrides (must precede VGA image paths below)
 TESTS_DIR ?= tests
 DRIVERS_DIR ?= drivers
+BUILD_DIR ?= build
+PROGRAM_BUILD_DIR := $(BUILD_DIR)/$(PROGRAM)
+OBJ_DIR := $(PROGRAM_BUILD_DIR)/obj
+GEN_DIR := $(PROGRAM_BUILD_DIR)/generated
 
 # --- Static VGA image embed (render_image / render_gaysans) ---
 RENDER_IMAGE_PROGRAMS := render_image render_gaysans
 VGA_IMAGE_SRC ?= images/plankton.bmp
 VGA_IMAGE_ARRAY ?= vga_image_rgb
-VGA_IMAGE_C ?= $(TESTS_DIR)/vga_image_data.c
-VGA_IMAGE_H ?= $(TESTS_DIR)/vga_image_data.h
+VGA_IMAGE_C ?= $(GEN_DIR)/vga_image_data.c
+VGA_IMAGE_H ?= $(GEN_DIR)/vga_image_data.h
 PROGRAM_SRC ?=
 
 ifeq ($(PROGRAM),render_gaysans)
-VGA_IMAGE_SRC := gaysans.txt
+VGA_IMAGE_SRC := images/gaysans.txt
 VGA_IMAGE_ARRAY := gaysans_rgb
-VGA_IMAGE_C := $(TESTS_DIR)/gaysans_bitmap.c
-VGA_IMAGE_H := $(TESTS_DIR)/gaysans_bitmap.h
+VGA_IMAGE_C := $(GEN_DIR)/gaysans_bitmap.c
+VGA_IMAGE_H := $(GEN_DIR)/gaysans_bitmap.h
 endif
 
 ifeq ($(filter $(PROGRAM),$(RENDER_IMAGE_PROGRAMS)),$(PROGRAM))
 PROGRAM_SRC := render_image.c
 PROGRAM_EXTRA_SRCS := $(VGA_IMAGE_C)
-VGA_IMAGE_LINK_H := $(TESTS_DIR)/vga_image_link.h
+VGA_IMAGE_LINK_H := $(GEN_DIR)/vga_image_link.h
 endif
 
 # --- Pong (indexed sprites + software frame buffer) ---
 PONG_DIR ?= pong
-PONG_ASSETS_C := $(PONG_DIR)/pong_assets.c
-PONG_ASSETS_H := $(PONG_DIR)/pong_assets.h
+PONG_ASSETS_C := $(GEN_DIR)/pong_assets.c
+PONG_ASSETS_H := $(GEN_DIR)/pong_assets.h
 PROGRAM_CFLAGS ?=
 ifeq ($(PROGRAM),pong)
 PROGRAM_CFLAGS := -I$(PONG_DIR)
@@ -90,6 +94,8 @@ endif
 CFLAGS = -march=$(FULL_ARCH) \
          -mabi=$(ABI) \
          -I$(DRIVERS_DIR) \
+         -I$(GEN_DIR) \
+         -I$(dir $(VGA_IMAGE_H)) \
          $(PROGRAM_CFLAGS) \
          -O2 \
          -Wall \
@@ -101,7 +107,7 @@ CFLAGS = -march=$(FULL_ARCH) \
          -fno-builtin
 
 # Linker flags
-MAP = $(PROGRAM).map
+MAP = $(PROGRAM_BUILD_DIR)/$(PROGRAM).map
 LDFLAGS = -T link.ld \
           -Wl,--gc-sections \
           -Wl,-Map=$(MAP)
@@ -122,11 +128,11 @@ endif
 PROGRAM_EXTRA_SRCS ?=
 SRCS = $(TESTS_DIR)/$(if $(PROGRAM_SRC),$(PROGRAM_SRC),$(PROGRAM).c) $(COMMON_SRCS) $(PROGRAM_EXTRA_SRCS)
 ASMS = boot.S
-OBJS = $(SRCS:.c=.o) $(ASMS:.S=.o)
-TARGET = $(PROGRAM).elf
-BIN = $(PROGRAM).bin
-DUMP = $(PROGRAM).dump
-MEM = $(PROGRAM).mem
+OBJS = $(addprefix $(OBJ_DIR)/,$(SRCS:.c=.o)) $(addprefix $(OBJ_DIR)/,$(ASMS:.S=.o))
+TARGET = $(PROGRAM_BUILD_DIR)/$(PROGRAM).elf
+BIN = $(PROGRAM_BUILD_DIR)/$(PROGRAM).bin
+DUMP = $(PROGRAM_BUILD_DIR)/$(PROGRAM).dump
+MEM = $(PROGRAM_BUILD_DIR)/$(PROGRAM).mem
 
 # Check if compiler is available
 CHECK_TOOLCHAIN = @if ! command -v $(CC) >/dev/null 2>&1 && \
@@ -156,50 +162,66 @@ check-toolchain:
 
 # Build ELF executable (libgcc after OBJS so __mulsi3 etc. are pulled in)
 $(TARGET): $(OBJS) link.ld
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) -lgcc -o $@
 
 # Build binary file (for loading into FPGA)
 $(BIN): $(TARGET)
+	@mkdir -p $(dir $@)
 	$(OBJCOPY) -O binary $< $@
 	@echo "Binary size: $$(stat -f%z $@ 2>/dev/null || stat -c%s $@ 2>/dev/null) bytes"
 
 # Build packed 32-bit memory init file (for $readmemh into logic [31:0] mem_array [...])
-$(MEM): $(TARGET)
+$(MEM): $(BIN)
+	@mkdir -p $(dir $@)
 	@python3 -c 'from pathlib import Path; import sys; data=Path(sys.argv[1]).read_bytes(); data+=b"\x00"*((4-len(data)%4)%4); Path(sys.argv[2]).write_text("".join(format(int.from_bytes(data[i:i+4], "little"), "08x")+"\n" for i in range(0, len(data), 4)))' "$(BIN)" "$@"
 	@echo "Generated packed memory init file: $@"
 
 # Generate disassembly dump
 $(DUMP): $(TARGET)
+	@mkdir -p $(dir $@)
 	$(OBJDUMP) -d -S $< > $@
 
 # Compile source files
-%.o: %.c
+$(OBJ_DIR)/%.o: %.c
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # render_image.o must recompile when the selected embedded header changes
 ifneq ($(filter $(PROGRAM),$(RENDER_IMAGE_PROGRAMS)),)
-$(TESTS_DIR)/render_image.o: force
+$(OBJ_DIR)/$(TESTS_DIR)/render_image.o: force
 endif
-$(TESTS_DIR)/render_image.o: $(TESTS_DIR)/render_image.c $(VGA_IMAGE_C) $(VGA_IMAGE_H) scripts/embed_vga_image.py
+$(OBJ_DIR)/$(TESTS_DIR)/render_image.o: $(TESTS_DIR)/render_image.c $(VGA_IMAGE_C) $(VGA_IMAGE_H) $(VGA_IMAGE_LINK_H) scripts/embed_vga_image.py
+	@mkdir -p $(dir $@) $(GEN_DIR)
 	@echo '#include "$(notdir $(VGA_IMAGE_H))"' > $(VGA_IMAGE_LINK_H)
 	$(CC) $(CFLAGS) -c $(TESTS_DIR)/render_image.c -o $@
 
 # Regenerate embedded VGA frame from BMP or gaysans .txt
 $(VGA_IMAGE_C): $(VGA_IMAGE_SRC) scripts/embed_vga_image.py
+	@mkdir -p $(dir $(VGA_IMAGE_C)) $(dir $(VGA_IMAGE_H))
 	python3 scripts/embed_vga_image.py "$(VGA_IMAGE_SRC)" "$(VGA_IMAGE_C)" "$(VGA_IMAGE_H)" "$(VGA_IMAGE_ARRAY)"
 	@echo '#include "$(notdir $(VGA_IMAGE_H))"' > $(VGA_IMAGE_LINK_H)
+
+$(VGA_IMAGE_H) $(VGA_IMAGE_LINK_H): $(VGA_IMAGE_C)
+
+$(OBJ_DIR)/$(TESTS_DIR)/pong.o $(OBJ_DIR)/$(PONG_DIR)/pong_engine.o: $(PONG_ASSETS_H)
 
 $(PONG_ASSETS_C): $(PONG_DIR)/include/sprites/background.bmp \
                   $(PONG_DIR)/include/sprites/paddle.bmp \
                   $(PONG_DIR)/include/sprites/ball.bmp \
                   scripts/embed_pong_assets.py
-	python3 scripts/embed_pong_assets.py
+	@mkdir -p $(GEN_DIR)
+	python3 scripts/embed_pong_assets.py "$(GEN_DIR)"
 
-%.o: %.S
+$(PONG_ASSETS_H): $(PONG_ASSETS_C)
+
+$(OBJ_DIR)/%.o: %.S
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Clean build artifacts
 clean:
+	rm -rf $(BUILD_DIR)
 	rm -f $(TESTS_DIR)/*.o $(DRIVERS_DIR)/*.o $(PONG_DIR)/*.o *.o *.elf *.bin *.mem *.dump *.map
 	rm -f $(TESTS_DIR)/vga_image_link.h
 
@@ -250,16 +272,16 @@ verify-instructions: $(DUMP)
 
 # Verify RV32M presence in the dump
 verify-rv32m-instructions:
-	@$(MAKE) check-toolchain PROGRAM=test_rv32m test_rv32m.dump
+	@$(MAKE) check-toolchain PROGRAM=test_rv32m $(BUILD_DIR)/test_rv32m/test_rv32m.dump
 	@echo "Checking RV32M instruction coverage..."
 	@missing=0; \
 	for insn in mul mulh mulhu mulhsu div divu rem remu; do \
-	  if ! grep -qE "\b$$insn\b" test_rv32m.dump; then \
+	  if ! grep -qE "\b$$insn\b" $(BUILD_DIR)/test_rv32m/test_rv32m.dump; then \
 	    echo "  MISSING: $$insn"; missing=$$((missing+1)); \
 	  fi; \
 	done; \
 	if [ $$missing -eq 0 ]; then \
-	  echo "  All RV32M instructions present in test_rv32m.dump."; \
+	  echo "  All RV32M instructions present in $(BUILD_DIR)/test_rv32m/test_rv32m.dump."; \
 	else \
 	  echo "  $$missing instruction(s) not found."; exit 1; \
 	fi

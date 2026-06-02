@@ -1,11 +1,15 @@
 # Build / tool outputs
+build/
 *.o
 *.elf
 *.map
 *.dump
 *.bin
 *.hex
+*.mem
 tests/vga_image_link.h
+gcc_err.txt
+gcc_out.txt
 
 # Logs / temp files
 *.log
@@ -16,8 +20,10 @@ __pycache__/
 *.pyc
 
 # VSCode / editor junk (optional but recommended)
+.claude/
 .vscode/
 *.code-workspace
+*.sublime-project
 *.sublime-workspace
 
 # macOS

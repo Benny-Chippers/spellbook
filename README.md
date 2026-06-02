@@ -10,8 +10,11 @@ RV32I test programs and helper code for bringing up the **Wizard Core** RISC-V C
 |------|---------|
 | `tests/` | Bare-metal programs (`make PROGRAM=<name>` builds `tests/<name>.c`) |
 | `drivers/` | `vga_driver`, `vga_text` (`-Idrivers` in Makefile) |
+| `images/` | Source bitmap/text assets used by image embedding scripts |
 | `docs/` | VGA and integration documentation |
 | `scripts/` | Image embed tools |
+| `sim/` | Optional simulation support files |
+| `build/` | Ignored build output directory |
 | `boot.S`, `link.ld` | Boot stub and linker script |
 
 ## Building
@@ -32,7 +35,7 @@ make clean
 make help
 ```
 
-`PROGRAM` is the basename of `tests/$(PROGRAM).c`. Outputs: `$(PROGRAM).elf`, `.bin`, `.mem`, `.dump`.
+`PROGRAM` is the basename of `tests/$(PROGRAM).c`. Outputs go under `build/$(PROGRAM)/`: `.elf`, `.bin`, `.mem`, `.dump`, `.map`, and object files.
 
 Toolchain override: `make TOOLCHAIN_PREFIX=riscv64-unknown-elf-`
 
@@ -40,7 +43,7 @@ Toolchain override: `make TOOLCHAIN_PREFIX=riscv64-unknown-elf-`
 
 ```bash
 make RV32I_ONLY=1 PROGRAM=test_isa_vga_rv32i
-cp test_isa_vga_rv32i.mem ../wizardCore/scripts/
+cp build/test_isa_vga_rv32i/test_isa_vga_rv32i.mem ../wizardCore/scripts/
 cd ../wizardCore && make simview
 ```
 
@@ -70,14 +73,14 @@ VGA map (indexed FB + palette): see [docs/vga/overview.md](docs/vga/overview.md)
 
 ```bash
 make PROGRAM=render_image
-make PROGRAM=render_gaysans    # gaysans.txt alias
+make PROGRAM=render_gaysans    # images/gaysans.txt alias
 ```
 
-`scripts/embed_vga_image.py` accepts 160×120 24-bit BMP or gaysans `.txt`. `tests/render_image.c` blits via the palette driver.
+`scripts/embed_vga_image.py` accepts 160×120 24-bit BMP or gaysans `.txt`. Generated image C/header files are written under `build/$(PROGRAM)/generated/`; `tests/render_image.c` blits via the palette driver.
 
 ## Other files
 
-- `mem_memlog.sv` — optional memory transaction logger for simulation
+- `sim/mem_memlog.sv` — optional memory transaction logger for simulation
 - `boot.S` — sets `sp`, jumps to `main`
 
 ## AI usage policy

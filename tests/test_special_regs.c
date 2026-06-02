@@ -8,7 +8,7 @@
  *   make PROGRAM=test_special_regs
  *
  * Simulation:
- *   cp test_special_regs.mem ../wizardCore/scripts/
+ *   cp build/test_special_regs/test_special_regs.mem ../wizardCore/scripts/
  *   cd ../wizardCore && make simview
  *
  * Drive debounced input pin 8 from the testbench (docs/special_regs/testbench_gpio.sv).

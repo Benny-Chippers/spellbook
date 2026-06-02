@@ -2,9 +2,10 @@ IDIR = include
 CC = gcc
 CFLAGS = -I$(IDIR)
 
-ODIR = obj
+BUILD_DIR ?= ../build/pong-tools
+ODIR = $(BUILD_DIR)/obj
 SDIR = src
-TARGET = color_csv
+TARGET = $(BUILD_DIR)/color_csv
 
 LIBS = -lm
 
@@ -20,6 +21,7 @@ $(ODIR)/%.o: $(SDIR)/%.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 $(TARGET) : $(OBJ)
+	@mkdir -p $(dir $@)
 	$(CC) -o $@ $^ $(CFLAGS) $(LIBS)
 
 .PHONY: clean
@@ -28,4 +30,4 @@ run:
 	./$(TARGET)
 
 clean:
-	rm -rf $(ODIR) bmp_handler *~ core
+	rm -rf $(BUILD_DIR) bmp_handler *~ core

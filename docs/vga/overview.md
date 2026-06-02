@@ -114,7 +114,7 @@ Header-only fast paths use the `_fast` suffix; `drivers/vga_driver.c` provides a
 
 ## Embedded images
 
-`scripts/embed_vga_image.py` still emits **legacy packed RGB444** row bytes (80 column-bytes × 3 channels per row). `tests/render_image.c` unpacks nibbles, allocates palette colors, and writes per-pixel indices.
+`scripts/embed_vga_image.py` still emits **legacy packed RGB444** row bytes (80 column-bytes × 3 channels per row). The Makefile writes generated image C/header files under `build/$(PROGRAM)/generated/`. `tests/render_image.c` unpacks nibbles, allocates palette colors, and writes per-pixel indices.
 
 ## Simulation notes
 
