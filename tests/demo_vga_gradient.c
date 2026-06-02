@@ -22,7 +22,7 @@ static void __attribute__((noinline)) draw_gradient_frame(void) {
         uint8_t g = vga_gradient_g_equal_band_fast(y);
         for (uint32_t x = 0; x < VGA_WIDTH; ++x) {
             uint8_t r = vga_gradient_r_equal_band_fast(x);
-            vga_write_index_fast(y, x, vga_palette_index_from_rg_fast(r, g));
+            vga_write_index_fast(x, y, vga_palette_index_from_rg_fast(r, g));
         }
     }
 }

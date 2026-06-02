@@ -35,13 +35,13 @@ static void write_store_size_smoke_test(void) {
 
 static void verify_coordinate_addressing(void) {
     uint32_t a00 = vga_fb_addr_fast(0u, 0u);
-    uint32_t a01 = vga_fb_addr_fast(0u, 1u);
-    uint32_t a10 = vga_fb_addr_fast(1u, 0u);
+    uint32_t a01 = vga_fb_addr_fast(1u, 0u);
+    uint32_t a10 = vga_fb_addr_fast(0u, 1u);
 
     ASSERT(a00 == VGA_FB_BASE);
     ASSERT((a01 - a00) == 1u);
     ASSERT((a10 - a00) == VGA_ROW_ADDR_STRIDE);
-    ASSERT((vga_fb_addr_fast(119u, 159u) - VGA_FB_BASE) == 0x779Fu);
+    ASSERT((vga_fb_addr_fast(159u, 119u) - VGA_FB_BASE) == 0x779Fu);
 }
 
 static void draw_gradient_frame(void) {
@@ -50,7 +50,7 @@ static void draw_gradient_frame(void) {
         uint8_t g = (uint8_t)(15u - ((15u * y) / (VGA_HEIGHT - 1u)));
         for (uint32_t x = 0; x < VGA_WIDTH; x++) {
             uint8_t r = (uint8_t)(15u - ((15u * x) / (VGA_WIDTH - 1u)));
-            vga_write_index_fast(y, x, vga_palette_index_from_rg_fast(r, g));
+            vga_write_index_fast(x, y, vga_palette_index_from_rg_fast(r, g));
         }
     }
 }
@@ -63,7 +63,7 @@ static void draw_checker_frame(void) {
     for (uint32_t y = 0; y < VGA_HEIGHT; y++) {
         for (uint32_t x = 0; x < VGA_WIDTH; x++) {
             uint8_t idx = ((x ^ y) & 1u) ? dark : light;
-            vga_write_index_fast(y, x, idx);
+            vga_write_index_fast(x, y, idx);
         }
     }
 }

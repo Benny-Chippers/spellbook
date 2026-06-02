@@ -13,7 +13,8 @@ static inline uint16_t palette_key(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 void swap_frame(void) {
-    MMIO_STORE32(__vga_swap_addr, 0, 1u);
+    /* Single SB — never SW; high swap address bytes alias FB if mis-routed */
+    MMIO_STORE8(__vga_swap_addr, 0, 1u);
 }
 
 void vga_palette_reset(void) {
@@ -41,11 +42,11 @@ uint8_t vga_palette_alloc_color(uint8_t r, uint8_t g, uint8_t b) {
     return i;
 }
 
-void vga_write_pixel_rgb(uint32_t y, uint32_t x, uint8_t r, uint8_t g, uint8_t b) {
+void vga_write_pixel_rgb(uint32_t x, uint32_t y, uint8_t r, uint8_t g, uint8_t b) {
     if (x >= VGA_WIDTH || y >= VGA_HEIGHT) {
         return;
     }
-    vga_write_index_fast(y, x, vga_palette_alloc_color(r, g, b));
+    vga_write_index_fast(x, y, vga_palette_alloc_color(r, g, b));
 }
 
 void vga_fill_row_rgb(uint32_t y, uint8_t r, uint8_t g, uint8_t b, uint32_t count) {

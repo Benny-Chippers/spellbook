@@ -119,7 +119,7 @@ static inline uint32_t vga_text_line_to_y(uint32_t line) {
 }
 
 static inline void vga_text_put_pixel(uint32_t x, uint32_t y, Color c) {
-    vga_write_pixel_rgb(y, x, c.r, c.g, c.b);
+    vga_write_pixel_rgb(x, y, c.r, c.g, c.b);
 }
 
 static inline const uint8_t *vga_text_glyph_5x7(uint8_t ascii) {

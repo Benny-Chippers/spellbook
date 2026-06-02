@@ -1,13 +1,14 @@
 /*
  * Combined RV32I + RV32M + VGA regression (default: rv32im).
  *
- * ISA coverage (I + M), then VGA smoke + equal-band gradient with blue ramp
- * 0→15→0 stepping once per second. Build rv32i-only snapshot:
+ * ISA coverage (I + M), then VGA smoke + equal-band gradient with blue triangle
+ * wave 0→15→0 (~1 s rise + ~1 s fall, 16 RGB444 steps). Build rv32i-only snapshot:
  *   make RV32I_ONLY=1 PROGRAM=test_isa_vga_rv32i
  */
 
 #include <stdint.h>
 #include "vga_driver.h"
+#include "delay.h"
 
 volatile uint32_t test_result = 0;
 volatile uint32_t test_passed = 0;
@@ -436,39 +437,22 @@ static void test_rv32m(void) {
 
 /* ---------- VGA tests ---------- */
 
-#define CPU_HZ             50000000u
-#define DELAY_LOOP_CPI_EST 5u
-#define ONE_SEC_ITERS      (CPU_HZ / DELAY_LOOP_CPI_EST)
-
-static void delay_cycles(volatile uint32_t count) {
-    while (count--) {
-        __asm__ volatile ("nop");
-    }
+static void vga_store_size_smoke_test(void) {
+    /* Store-size probe: one byte, halfword, word at (0,0) — each a single insn */
+    MMIO_STORE8(__vga_fb_base, 0, 0xA5u);
+    MMIO_STORE16(__vga_fb_base, 2, 0x5AA5u);
+    MMIO_STORE32(__vga_fb_base, 4, 0x12345678u);
 }
 
 static void verify_coordinate_addressing(void) {
     uint32_t a00 = vga_fb_addr_fast(0u, 0u);
-    uint32_t a01 = vga_fb_addr_fast(0u, 1u);
-    uint32_t a10 = vga_fb_addr_fast(1u, 0u);
+    uint32_t a01 = vga_fb_addr_fast(1u, 0u);
+    uint32_t a10 = vga_fb_addr_fast(0u, 1u);
 
     ASSERT(a00 == VGA_FB_BASE, 103);
     ASSERT((a01 - a00) == 1u, 104);
     ASSERT((a10 - a00) == VGA_ROW_ADDR_STRIDE, 105);
-    ASSERT((vga_fb_addr_fast(119u, 159u) - VGA_FB_BASE) == 0x779Fu, 106);
-}
-
-static void vga_store_size_smoke_test(void) {
-    volatile uint8_t *fb8 = (volatile uint8_t *)vga_fb_addr_fast(0u, 0u);
-    volatile uint16_t *fb16 = (volatile uint16_t *)vga_fb_addr_fast(0u, 0u);
-    volatile uint32_t *fb32 = (volatile uint32_t *)vga_fb_addr_fast(0u, 0u);
-
-    *fb8 = 0xA5u;
-    *fb16 = 0x5AA5u;
-    *fb32 = 0x12345678u;
-}
-
-static void init_gradient_palette(void) {
-    vga_init_palette_rg_blue15_fast();
+    ASSERT((vga_fb_addr_fast(159u, 119u) - VGA_FB_BASE) == 0x779Fu, 106);
 }
 
 /*
@@ -480,9 +464,21 @@ static void __attribute__((noinline)) draw_gradient_frame(void) {
         uint8_t g = vga_gradient_g_equal_band_fast(y);
         for (uint32_t x = 0; x < VGA_WIDTH; ++x) {
             uint8_t r = vga_gradient_r_equal_band_fast(x);
-            vga_write_index_fast(y, x, vga_palette_index_from_rg_fast(r, g));
+            vga_write_index_fast(x, y, vga_palette_index_from_rg_fast(r, g));
         }
     }
+}
+
+/*
+ * Seed both frame buffers once; palette is shared so blue animation needs no
+ * per-frame FB redraw (avoids alternating blank/index-0 buffer flashes).
+ */
+static void init_vga_gradient_demo(uint8_t blue) {
+    vga_init_palette_rg_b_fast(blue);
+    draw_gradient_frame();
+    swap_frame();
+    draw_gradient_frame();
+    swap_frame();
 }
 
 static void draw_fail_screen_red(void) {
@@ -490,7 +486,7 @@ static void draw_fail_screen_red(void) {
 }
 
 int main(void) {
-    uint8_t blue = 0u;
+    uint8_t blue = 8u;
     int8_t blue_dir = 1;
 
     test_result = 0;
@@ -528,14 +524,13 @@ int main(void) {
     vga_store_size_smoke_test();
     if (test_result) { goto fail_screen; }
     vga_stage = 2;
-    init_gradient_palette();
+    init_vga_gradient_demo(blue);
 
     for (;;) {
-        vga_palette_set_blue_all_fast(blue);
-        draw_gradient_frame();
-        vga_stage = 3;
+        vga_init_palette_rg_b_fast(blue);
         swap_frame();
-        delay_cycles(ONE_SEC_ITERS);
+        vga_stage = 3;
+        delay_cpu_instructions(DELAY_BLUE_STEP_ITERS);
 
         if (blue_dir > 0) {
             if (blue < 15u) {
@@ -557,6 +552,6 @@ fail_screen:
     draw_fail_screen_red();
     swap_frame();
     for (;;) {
-        delay_cycles(ONE_SEC_ITERS);
+        delay_cpu_instructions(DELAY_ONE_SEC_ITERS);
     }
 }

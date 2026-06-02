@@ -4,30 +4,34 @@
 #include <stdint.h>
 
 /*
- * Physical addresses exported by link.ld as absolute symbols.
- *
- * GNU ld assigns these with "= ORIGIN(...)" or "= constant". They are not
- * variables in RAM — the symbol *value* is the address. In C, declare each as
- * an extern array and use the decayed pointer:
- *
- *   extern char __vga_fb_base[];
- *   MMIO_STORE8(__vga_fb_base, offset, value);
- *
- * VGA regions are write-only from the CPU (link.ld: w!r!a). Do not load from
- * frame-buffer or palette addresses — RTL has no CPU read path for VGA stores.
- * Use MMIO_STORE*() for all VGA access so reads are never emitted by mistake.
+ * Linker absolute symbols (link.ld). MMIO_ADDR() yields the physical address.
+ * Stores use inline asm so GCC never emits read-modify-write byte sequences
+ * on write-only VGA (a 32-bit volatile store can become lbu/sb pairs and
+ * corrupt adjacent frame-buffer bytes, e.g. at 0x1003_0000).
  */
 
 #define MMIO_ADDR(sym) ((uint32_t)(uintptr_t)(sym))
 
+static inline void mmio_write8(uint32_t addr, uint8_t val) {
+    __asm__ volatile ("sb %0, 0(%1)" : : "r"(val), "r"(addr) : "memory");
+}
+
+static inline void mmio_write16(uint32_t addr, uint16_t val) {
+    __asm__ volatile ("sh %0, 0(%1)" : : "r"(val), "r"(addr) : "memory");
+}
+
+static inline void mmio_write32(uint32_t addr, uint32_t val) {
+    __asm__ volatile ("sw %0, 0(%1)" : : "r"(val), "r"(addr) : "memory");
+}
+
 #define MMIO_STORE8(base, off, val) \
-    do { *(volatile uint8_t *)(MMIO_ADDR(base) + (off)) = (uint8_t)(val); } while (0)
+    mmio_write8(MMIO_ADDR(base) + (uint32_t)(off), (uint8_t)(val))
 
 #define MMIO_STORE16(base, off, val) \
-    do { *(volatile uint16_t *)(MMIO_ADDR(base) + (off)) = (uint16_t)(val); } while (0)
+    mmio_write16(MMIO_ADDR(base) + (uint32_t)(off), (uint16_t)(val))
 
 #define MMIO_STORE32(base, off, val) \
-    do { *(volatile uint32_t *)(MMIO_ADDR(base) + (off)) = (uint32_t)(val); } while (0)
+    mmio_write32(MMIO_ADDR(base) + (uint32_t)(off), (uint32_t)(val))
 
 extern char __ram_base[];
 extern char __ram_size_bytes[];
@@ -51,5 +55,24 @@ extern char __vga_swap_addr[];
 #define VGA_PAL_GREEN    MMIO_ADDR(__vga_pal_green)
 #define VGA_PAL_BLUE     MMIO_ADDR(__vga_pal_blue)
 #define VGA_SWAP_ADDR    MMIO_ADDR(__vga_swap_addr)
+
+/* Special module registers (addr[29:28] == 0b11, wizardCore/docs/memory_Map.md) */
+#define SPC_GPIO_DATA         0x30000000u
+#define SPC_GPIO_DIR          0x30000004u
+#define SPC_COUNTER           0x30010000u
+#define SPC_COUNTER_RESET     0x30011000u
+
+/*
+ * sp_gpio.sv IO_ENABLE — 1 = software may set direction; 0 = forced output.
+ * Matches 32'b1111_1111_1000_0000_1111_1111_1000_0000.
+ */
+#define GPIO_IO_ENABLE        0xFF80FF80u
+#define GPIO_FORCE_OUTPUT     (~GPIO_IO_ENABLE)
+
+static inline uint32_t mmio_read32(uint32_t addr) {
+    uint32_t val;
+    __asm__ volatile ("lw %0, 0(%1)" : "=r"(val) : "r"(addr) : "memory");
+    return val;
+}
 
 #endif

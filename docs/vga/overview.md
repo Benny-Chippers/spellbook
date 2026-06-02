@@ -99,9 +99,9 @@ Red ramps with **X**, green with **Y**, blue stays at full brightness — exerci
 
 | Function | Purpose |
 |----------|---------|
-| `vga_fb_addr_fast(y, x)` | Frame-buffer byte address |
+| `vga_fb_addr_fast(x, y)` | Frame-buffer byte address |
 | `vga_palette_set_fast(idx, r, g, b)` | Write one palette entry |
-| `vga_write_index_fast(y, x, idx)` | One pixel |
+| `vga_write_index_fast(x, y, idx)` | One pixel |
 | `vga_fill_row_index_fast(y, idx, count)` | Horizontal run |
 | `vga_fill_screen_index_fast(idx)` | Full frame with existing palette entry |
 | `vga_fill_screen_rgb_fast(r, g, b, idx)` | Set palette entry + full frame |

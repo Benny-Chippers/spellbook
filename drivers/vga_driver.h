@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include "mmio_map.h"
 
+/* Indexed blit / palette load helpers: drivers/vga_blit.h */
+
 #define VGA_WIDTH           160u
 #define VGA_HEIGHT          120u
 #define VGA_ROW_ADDR_STRIDE 0x100u
@@ -20,7 +22,7 @@ typedef struct {
     uint8_t b;
 } Color;
 
-static inline uint32_t vga_fb_addr_fast(uint32_t y, uint32_t x) {
+static inline uint32_t vga_fb_addr_fast(uint32_t x, uint32_t y) {
     return VGA_FB_BASE + (y * VGA_ROW_ADDR_STRIDE) + x;
 }
 
@@ -35,7 +37,7 @@ static inline void vga_palette_set_fast(uint8_t index, uint8_t r, uint8_t g, uin
     MMIO_STORE8(__vga_pal_blue, index, (uint8_t)(b & 0x0Fu));
 }
 
-static inline void vga_write_index_fast(uint32_t y, uint32_t x, uint8_t palette_index) {
+static inline void vga_write_index_fast(uint32_t x, uint32_t y, uint8_t palette_index) {
     MMIO_STORE8(__vga_fb_base, (y * VGA_ROW_ADDR_STRIDE) + x, palette_index);
 }
 
@@ -62,21 +64,18 @@ static inline void vga_fill_screen_fail_red_fast(void) {
     vga_fill_screen_rgb_fast(15u, 0u, 0u, VGA_PAL_INDEX_FAIL_RED);
 }
 
-/* Palette index r*16+g with blue fixed at 15 in each entry. */
-static inline void vga_init_palette_rg_blue15_fast(void) {
+/* Palette index r*16+g with a shared blue level in every entry. */
+static inline void vga_init_palette_rg_b_fast(uint8_t blue) {
+    uint8_t b = (uint8_t)(blue & 0x0Fu);
     for (uint8_t r = 0; r < 16u; ++r) {
         for (uint8_t g = 0; g < 16u; ++g) {
-            vga_palette_set_fast((uint8_t)((r << 4) | g), r, g, 15u);
+            vga_palette_set_fast((uint8_t)((r << 4) | g), r, g, b);
         }
     }
 }
 
-/* Update blue channel for all 256 palette entries (R/G unchanged). */
-static inline void vga_palette_set_blue_all_fast(uint8_t blue) {
-    uint8_t b = (uint8_t)(blue & 0x0Fu);
-    for (uint16_t i = 0; i < 256u; ++i) {
-        MMIO_STORE8(__vga_pal_blue, i, b);
-    }
+static inline void vga_init_palette_rg_blue15_fast(void) {
+    vga_init_palette_rg_b_fast(15u);
 }
 
 static inline uint8_t vga_palette_index_from_rg_fast(uint8_t r, uint8_t g) {
@@ -103,7 +102,7 @@ static inline uint8_t vga_pack_two_pixels_fast(uint8_t even_x, uint8_t odd_x) {
 void swap_frame(void);
 void vga_palette_reset(void);
 uint8_t vga_palette_alloc_color(uint8_t r, uint8_t g, uint8_t b);
-void vga_write_pixel_rgb(uint32_t y, uint32_t x, uint8_t r, uint8_t g, uint8_t b);
+void vga_write_pixel_rgb(uint32_t x, uint32_t y, uint8_t r, uint8_t g, uint8_t b);
 void vga_fill_row_rgb(uint32_t y, uint8_t r, uint8_t g, uint8_t b, uint32_t count);
 
 #endif

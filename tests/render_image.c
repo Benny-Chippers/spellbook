@@ -23,15 +23,15 @@ int main(void) {
             uint32_t x0 = xb << 1;
 
             vga_write_pixel_rgb(
-                y,
                 x0,
+                y,
                 vga_nibble_from_packed_byte_fast(r_byte, x0),
                 vga_nibble_from_packed_byte_fast(g_byte, x0),
                 vga_nibble_from_packed_byte_fast(b_byte, x0)
             );
             vga_write_pixel_rgb(
-                y,
                 x0 + 1u,
+                y,
                 vga_nibble_from_packed_byte_fast(r_byte, x0 + 1u),
                 vga_nibble_from_packed_byte_fast(g_byte, x0 + 1u),
                 vga_nibble_from_packed_byte_fast(b_byte, x0 + 1u)

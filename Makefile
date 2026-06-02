@@ -30,14 +30,19 @@ SIZE = $(TOOLCHAIN_PREFIX)size
 ARCH = rv32i
 ABI = ilp32
 
+# Select bare-metal application (basename of tests/$(PROGRAM).c)
+PROGRAM ?= test_rv32i
+
+# Verilator / local sim targets are rv32i-only (no M extension in RTL)
+ifeq ($(PROGRAM),test_special_regs)
+override RV32I_ONLY := 1
+endif
+
 # Default rv32im; RV32I_ONLY=1 strips M (Verilator sim on macOS when RTL is rv32i-only)
 ISA_EXTENSIONS ?= m
 ifeq ($(RV32I_ONLY),1)
 override ISA_EXTENSIONS :=
 endif
-
-# Select bare-metal application (basename of tests/$(PROGRAM).c)
-PROGRAM ?= test_rv32i
 
 # Source layout overrides (must precede VGA image paths below)
 TESTS_DIR ?= tests
@@ -64,6 +69,16 @@ PROGRAM_EXTRA_SRCS := $(VGA_IMAGE_C)
 VGA_IMAGE_LINK_H := $(TESTS_DIR)/vga_image_link.h
 endif
 
+# --- Pong (indexed sprites + software frame buffer) ---
+PONG_DIR ?= pong
+PONG_ASSETS_C := $(PONG_DIR)/pong_assets.c
+PONG_ASSETS_H := $(PONG_DIR)/pong_assets.h
+PROGRAM_CFLAGS ?=
+ifeq ($(PROGRAM),pong)
+PROGRAM_CFLAGS := -I$(PONG_DIR)
+PROGRAM_EXTRA_SRCS := $(PONG_DIR)/pong_engine.c $(PONG_ASSETS_C)
+endif
+
 # Build full architecture string
 ifneq ($(strip $(ISA_EXTENSIONS)),)
 FULL_ARCH := $(ARCH)$(ISA_EXTENSIONS)
@@ -75,6 +90,7 @@ endif
 CFLAGS = -march=$(FULL_ARCH) \
          -mabi=$(ABI) \
          -I$(DRIVERS_DIR) \
+         $(PROGRAM_CFLAGS) \
          -O2 \
          -Wall \
          -Wextra \
@@ -100,6 +116,9 @@ LDFLAGS = -T link.ld \
 
 # Source files (bare-metal apps under tests/, VGA helpers under drivers/)
 COMMON_SRCS = $(DRIVERS_DIR)/vga_driver.c
+ifeq ($(PROGRAM),test_special_regs)
+COMMON_SRCS :=
+endif
 PROGRAM_EXTRA_SRCS ?=
 SRCS = $(TESTS_DIR)/$(if $(PROGRAM_SRC),$(PROGRAM_SRC),$(PROGRAM).c) $(COMMON_SRCS) $(PROGRAM_EXTRA_SRCS)
 ASMS = boot.S
@@ -170,12 +189,18 @@ $(VGA_IMAGE_C): $(VGA_IMAGE_SRC) scripts/embed_vga_image.py
 	python3 scripts/embed_vga_image.py "$(VGA_IMAGE_SRC)" "$(VGA_IMAGE_C)" "$(VGA_IMAGE_H)" "$(VGA_IMAGE_ARRAY)"
 	@echo '#include "$(notdir $(VGA_IMAGE_H))"' > $(VGA_IMAGE_LINK_H)
 
+$(PONG_ASSETS_C): $(PONG_DIR)/include/sprites/background.bmp \
+                  $(PONG_DIR)/include/sprites/paddle.bmp \
+                  $(PONG_DIR)/include/sprites/ball.bmp \
+                  scripts/embed_pong_assets.py
+	python3 scripts/embed_pong_assets.py
+
 %.o: %.S
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # Clean build artifacts
 clean:
-	rm -f $(TESTS_DIR)/*.o $(DRIVERS_DIR)/*.o *.o *.elf *.bin *.mem *.dump *.map
+	rm -f $(TESTS_DIR)/*.o $(DRIVERS_DIR)/*.o $(PONG_DIR)/*.o *.o *.elf *.bin *.mem *.dump *.map
 	rm -f $(TESTS_DIR)/vga_image_link.h
 
 # Show current configuration
@@ -263,6 +288,8 @@ help:
 	@echo "  Select program source: make PROGRAM=test_vga"
 	@echo "  Static bitmap: make PROGRAM=render_image (default: images/plankton.bmp)"
 	@echo "  Gaysans text:  make PROGRAM=render_gaysans"
+	@echo "  Pong demo:     make PROGRAM=pong"
+	@echo "  Special regs:  make PROGRAM=test_special_regs   (auto rv32i for Verilator)"
 	@echo "  Custom image:  make PROGRAM=render_image VGA_IMAGE_SRC=path/to/file.bmp \\"
 	@echo "                   VGA_IMAGE_C=tests/my_image.c VGA_IMAGE_H=tests/my_image.h VGA_IMAGE_ARRAY=my_rgb"
 	@echo ""
