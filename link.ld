@@ -9,10 +9,16 @@
 
 MEMORY
 {
-    RAM (rwx)       : ORIGIN = 0x00000000, LENGTH = 0x20000   /* 128 KiB */
-    VGA_FB (w!r!a)  : ORIGIN = 0x10000000, LENGTH = 0x7800     /* indexed FB, WO */
-    VGA_PAL (w!r!a) : ORIGIN = 0x10008000, LENGTH = 0x0300     /* palette R/G/B, WO */
-    VGA_SWAP (w!r!a): ORIGIN = 0x10030000, LENGTH = 0x4         /* frame toggle, WO */
+    RAM (rwx)           : ORIGIN = 0x00000000, LENGTH = 0x20000   /* 128 KiB */
+    VGA_FB (w!r!a)      : ORIGIN = 0x10000000, LENGTH = 0x7800     /* indexed FB, WO */
+    VGA_PAL (w!r!a)     : ORIGIN = 0x10008000, LENGTH = 0x0300     /* palette R/G/B, WO */
+    VGA_SWAP (w!r!a)    : ORIGIN = 0x10030000, LENGTH = 0x4         /* frame toggle, WO */
+    NB_PSRAM (rw!a)     : ORIGIN = 0x20000000, LENGTH = 0x20000
+    CPU_SPECIAL (rw!a)  : ORIGIN = 0x30000000, LENGTH = 0x40000
+    NB_FLASH (rw!a)     : ORIGIN = 0x60000000, LENGTH = 0x20000
+    NB_SDCARD (rw!a)    : ORIGIN = 0xA0000000, LENGTH = 0x20000
+    NB_SOUTHB (rw!a)    : ORIGIN = 0xE0000000, LENGTH = 0x20000
+    NB_SERIAL (w!r!a)   : ORIGIN = 0xE8000000, LENGTH = 0x4
 }
 
 ENTRY(_start)
@@ -31,6 +37,17 @@ SECTIONS
     __vga_pal_green = ORIGIN(VGA_PAL) + 0x100;
     __vga_pal_blue = ORIGIN(VGA_PAL) + 0x200;
     __vga_swap_addr = ORIGIN(VGA_SWAP);
+
+    /* North Bridge SPI addresses */
+    __spi_psram_base = ORIGIN(NB_PSRAM);
+    __spi_flash_base = ORIGIN(NB_FLASH);
+    __spi_sdcard_base = ORIGIN(NB_SDCARD);
+    __spi_southb_base = ORIGIN(NB_SOUTHB);
+    __spi_serial_base = ORIGIN(NB_SERIAL);
+
+    /* CPU Special Registers */
+    __cpu_gpio_base = ORIGIN(CPU_SPECIAL);
+    __cpu_counter_base = ORIGIN(CPU_SPECIAL) + 0x10000;
 
     .text ORIGIN(RAM) : {
         *(.text.start)

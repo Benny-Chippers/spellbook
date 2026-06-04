@@ -24,6 +24,18 @@ static inline void mmio_write32(uint32_t addr, uint32_t val) {
     __asm__ volatile ("sw %0, 0(%1)" : : "r"(val), "r"(addr) : "memory");
 }
 
+static inline uint8_t mmio_read8(uint32_t addr) {
+    uint32_t val;
+    __asm__ volatile ("lbu %0, 0(%1)" : "=r"(val) : "r"(addr) : "memory");
+    return (uint8_t)val;
+}
+
+static inline uint16_t mmio_read16(uint32_t addr) {
+    uint32_t val;
+    __asm__ volatile ("lhu %0, 0(%1)" : "=r"(val) : "r"(addr) : "memory");
+    return (uint16_t)val;
+}
+
 #define MMIO_STORE8(base, off, val) \
     mmio_write8(MMIO_ADDR(base) + (uint32_t)(off), (uint8_t)(val))
 
@@ -44,6 +56,12 @@ extern char __vga_pal_green[];
 extern char __vga_pal_blue[];
 extern char __vga_swap_addr[];
 
+extern char __spi_psram_base[];
+extern char __spi_flash_base[];
+extern char __spi_sdcard_base[];
+extern char __spi_southb_base[];
+extern char __spi_serial_base[];
+
 #define RAM_BASE         MMIO_ADDR(__ram_base)
 #define RAM_SIZE_BYTES   MMIO_ADDR(__ram_size_bytes)
 #define RAM_SIZE_WORDS   MMIO_ADDR(__ram_size_words)
@@ -55,6 +73,12 @@ extern char __vga_swap_addr[];
 #define VGA_PAL_GREEN    MMIO_ADDR(__vga_pal_green)
 #define VGA_PAL_BLUE     MMIO_ADDR(__vga_pal_blue)
 #define VGA_SWAP_ADDR    MMIO_ADDR(__vga_swap_addr)
+
+#define SPI_PSRAM_ADDR     MMIO_ADDR(__spi_psram_base)
+#define SPI_FLASH_ADDR     MMIO_ADDR(__spi_flash_base)
+#define SPI_SDCARD_ADDR    MMIO_ADDR(__spi_sdcard_base)
+#define SPI_SOUTHB_ADDR    MMIO_ADDR(__spi_southb_base)
+#define SPI_SERIAL_ADDR    MMIO_ADDR(__spi_serial_base)
 
 /* Special module registers (addr[29:28] == 0b11, wizardCore/docs/memory_Map.md) */
 #define SPC_GPIO_DATA         0x30000000u

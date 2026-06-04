@@ -24,7 +24,7 @@ Interface contract between the Wizard Core CPU and the VGA subsystem. RTL lives 
 
 - **Frame buffer:** one palette index per pixel; row stride `0x100`; `addr = 0x1000_0000 + (y << 8) + x`.
 - **Palette:** byte-linear from `0x1000_8000`; separate R/G/B 256-byte slices in the CPU map; RTL packs nibbles into 32-bit BRAM words for scan-out [3].
-- **Not** the legacy three-plane RGB layout (`0x1001_0000` / `0x1002_0000` red/green/blue frame planes).
+- **No RGB frame planes:** software writes palette indices to the framebuffer and RGB444 nibbles to the palette.
 
 See [overview.md](overview.md) for software usage.
 

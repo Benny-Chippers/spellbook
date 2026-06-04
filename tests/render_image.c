@@ -5,8 +5,9 @@
 /*
  * Static bitmap renderer — pairs with generated *_image.c / *_image.h data.
  *
- * Embedded data is row-major packed RGB444 (legacy embed format): per column-byte,
+ * Embedded data is row-major packed RGB444 source data: per column-byte,
  * three channel bytes each holding two 4-bit pixels (even X low nibble, odd X high).
+ * The renderer converts each source color to a palette index before writing the framebuffer.
  */
 #include "vga_image_link.h"
 

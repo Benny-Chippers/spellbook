@@ -9,7 +9,7 @@ RV32I test programs and helper code for bringing up the **Wizard Core** RISC-V C
 | Path | Purpose |
 |------|---------|
 | `tests/` | Bare-metal programs (`make PROGRAM=<name>` builds `tests/<name>.c`) |
-| `drivers/` | `vga_driver`, `vga_text` (`-Idrivers` in Makefile) |
+| `drivers/` | MMIO helpers plus VGA, text, GPIO, and delay drivers (`-Idrivers` in Makefile) |
 | `images/` | Source bitmap/text assets used by image embedding scripts |
 | `docs/` | VGA and integration documentation |
 | `scripts/` | Image embed tools |
@@ -30,6 +30,7 @@ make                              # default: test_rv32i (rv32im)
 make RV32I_ONLY=1 PROGRAM=test_isa_vga_rv32i   # rv32i Verilator bring-up
 make PROGRAM=test_isa_vga                 # rv32im + M tests + blue anim
 make PROGRAM=render_image         # BMP → embedded frame data
+make PROGRAM=pong                 # Pong demo
 make verify-instructions          # RV32I opcode coverage in dump
 make clean
 make help
@@ -57,10 +58,10 @@ Capstone loads the hex file via `$readmemh` in `mem_memory.sv` (default `INIT_FI
 | `test_rv32m` | RV32M multiply/divide smoke tests |
 | `test_isa_vga_rv32i` | RV32I + static VGA gradient (Verilator bring-up) |
 | `test_isa_vga` | RV32I+M + VGA gradient with 1 s blue ramp |
-| `test_vga` | VGA addressing and frame swap |
+| `test_special_regs` | GPIO and timing counter special-register tests |
 | `test_mem_hammer` | RAM integrity patterns |
 | `render_image` | Blit embedded 160×120 BMP |
-| `small` | Minimal sanity check |
+| `pong` | Pong demo using indexed sprites |
 
 ## Memory map (on-chip RAM)
 

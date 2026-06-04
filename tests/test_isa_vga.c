@@ -530,7 +530,7 @@ int main(void) {
         vga_init_palette_rg_b_fast(blue);
         swap_frame();
         vga_stage = 3;
-        delay_cpu_instructions(DELAY_BLUE_STEP_ITERS);
+        delay_us(1000000u / DELAY_BLUE_RAMP_STEPS);
 
         if (blue_dir > 0) {
             if (blue < 15u) {
@@ -552,6 +552,6 @@ fail_screen:
     draw_fail_screen_red();
     swap_frame();
     for (;;) {
-        delay_cpu_instructions(DELAY_ONE_SEC_ITERS);
+        delay_ms(1000u);
     }
 }

@@ -114,10 +114,9 @@ Header-only fast paths use the `_fast` suffix; `drivers/vga_driver.c` provides a
 
 ## Embedded images
 
-`scripts/embed_vga_image.py` still emits **legacy packed RGB444** row bytes (80 column-bytes × 3 channels per row). The Makefile writes generated image C/header files under `build/$(PROGRAM)/generated/`. `tests/render_image.c` unpacks nibbles, allocates palette colors, and writes per-pixel indices.
+`scripts/embed_vga_image.py` emits packed RGB444 source rows (80 column-bytes × 3 channels per row). The Makefile writes generated image C/header files under `build/$(PROGRAM)/generated/`. `tests/render_image.c` unpacks nibbles, allocates palette colors, and writes framebuffer indices.
 
 ## Simulation notes
 
 - Default Capstone load: copy `test_isa_vga.mem` to `wizardCore/scripts/`, run `make simview`.
-- `test_isa_vga` swaps every ~0.5 s (calibrated for ~5 MHz effective CPU rate in the delay loop).
-- For older `test_vga` timing notes, allow **≥ 900 ms** simulation window to see multiple frame swaps.
+- `test_isa_vga` uses the hardware timing counter through `drivers/delay.h`.
