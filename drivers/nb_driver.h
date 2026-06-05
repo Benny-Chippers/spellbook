@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+#include "delay.h"
 #include "mmio_map.h"
 
 #define NB_PSRAM_BASE    SPI_PSRAM_ADDR
@@ -35,15 +36,21 @@ static inline void nb_write32(uint32_t base, uint32_t offset, uint32_t value) {
 }
 
 static inline uint8_t nb_read8(uint32_t base, uint32_t offset) {
-    return mmio_read8(nb_addr(base, offset));
+    uint8_t value = mmio_read8(nb_addr(base, offset));
+    delay_us(15u);
+    return value;
 }
 
 static inline uint16_t nb_read16(uint32_t base, uint32_t offset) {
-    return mmio_read16(nb_addr(base, offset));
+    uint16_t value = mmio_read16(nb_addr(base, offset));
+    delay_us(15u);
+    return value;
 }
 
 static inline uint32_t nb_read32(uint32_t base, uint32_t offset) {
-    return mmio_read32(nb_addr(base, offset));
+    uint32_t value = mmio_read32(nb_addr(base, offset));
+    delay_us(15u);
+    return value;
 }
 
 static inline void serial_write_byte(uint8_t value) {

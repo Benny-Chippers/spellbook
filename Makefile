@@ -83,6 +83,17 @@ PROGRAM_CFLAGS := -I$(PONG_DIR)
 PROGRAM_EXTRA_SRCS := $(PONG_DIR)/pong_engine.c $(PONG_ASSETS_C)
 endif
 
+# --- Tetris (indexed sprites + software frame buffer) ---
+TETRIS_DIR ?= Tetris
+TETRIS_ASSETS_C := $(GEN_DIR)/tetris_assets.c
+TETRIS_ASSETS_H := $(GEN_DIR)/tetris_assets.h
+TETRIS_BOOT_ASSETS_C := $(GEN_DIR)/tetris_boot_assets.c
+TETRIS_BOOT_ASSETS_H := $(GEN_DIR)/tetris_boot_assets.h
+ifeq ($(PROGRAM),tetris)
+PROGRAM_CFLAGS := -I$(TETRIS_DIR)
+PROGRAM_EXTRA_SRCS := $(TETRIS_DIR)/tetris_engine.c $(TETRIS_DIR)/tetris_input.c $(TETRIS_DIR)/tetris_boot.c $(TETRIS_ASSETS_C) $(TETRIS_BOOT_ASSETS_C)
+endif
+
 # Build full architecture string
 ifneq ($(strip $(ISA_EXTENSIONS)),)
 FULL_ARCH := $(ARCH)$(ISA_EXTENSIONS)
@@ -214,6 +225,29 @@ $(PONG_ASSETS_C): $(PONG_DIR)/include/sprites/background.bmp \
 	python3 scripts/embed_pong_assets.py "$(GEN_DIR)"
 
 $(PONG_ASSETS_H): $(PONG_ASSETS_C)
+
+$(OBJ_DIR)/$(TESTS_DIR)/tetris.o $(OBJ_DIR)/$(TETRIS_DIR)/tetris_engine.o: $(TETRIS_ASSETS_H)
+$(OBJ_DIR)/$(TESTS_DIR)/tetris.o $(OBJ_DIR)/$(TETRIS_DIR)/tetris_boot.o: $(TETRIS_BOOT_ASSETS_H)
+
+$(TETRIS_ASSETS_C): $(TETRIS_DIR)/include/sprites/Tetris_Background.bmp \
+                    $(TETRIS_DIR)/include/sprites/Pieces/Blue_Block.bmp \
+                    $(TETRIS_DIR)/include/sprites/Pieces/Green_Block.bmp \
+                    $(TETRIS_DIR)/include/sprites/Pieces/Orange_Block.bmp \
+                    $(TETRIS_DIR)/include/sprites/Pieces/Purple_Block.bmp \
+                    $(TETRIS_DIR)/include/sprites/Pieces/Red_Block.bmp \
+                    $(TETRIS_DIR)/include/sprites/Pieces/Teal_Block.bmp \
+                    $(TETRIS_DIR)/include/sprites/Pieces/Yellow_Block.bmp \
+                    scripts/embed_tetris_assets.py
+	@mkdir -p $(GEN_DIR)
+	python3 scripts/embed_tetris_assets.py "$(GEN_DIR)"
+
+$(TETRIS_ASSETS_H): $(TETRIS_ASSETS_C)
+
+$(TETRIS_BOOT_ASSETS_C): images/wc_4bit.bmp scripts/embed_boot_image.py
+	@mkdir -p $(GEN_DIR)
+	python3 scripts/embed_boot_image.py "images/wc_4bit.bmp" "$(GEN_DIR)" "tetris_boot_assets"
+
+$(TETRIS_BOOT_ASSETS_H): $(TETRIS_BOOT_ASSETS_C)
 
 $(OBJ_DIR)/%.o: %.S
 	@mkdir -p $(dir $@)
